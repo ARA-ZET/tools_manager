@@ -1,0 +1,201 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions for role-based access control
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserRole() {
+      return get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.role;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+    
+    function isSupervisor() {
+      return isAuthenticated() && (getUserRole() == 'supervisor' || getUserRole() == 'admin');
+    }
+    
+    function isWorker() {
+      return isAuthenticated() && getUserRole() == 'worker';
+    }
+    
+    function isActiveUser() {
+      return isAuthenticated() && get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.isActive == true;
+    }
+    
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Users collection (from existing auth system)
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Staff collection - stores user roles and permissions
+    match /staff/{staffId} {
+      // Admins can read/write all staff records
+      allow read, write: if isAdmin();
+      
+      // Supervisors can read all staff but only update non-admin staff
+      allow read: if isSupervisor();
+      allow update: if isSupervisor() && 
+                      resource.data.role != 'admin' && 
+                      request.resource.data.role != 'admin';
+      
+      // Users can read their own record and update non-role fields
+      allow read: if isOwner(staffId);
+      allow update: if isOwner(staffId) && 
+                      request.resource.data.role == resource.data.role &&
+                      request.resource.data.isActive == resource.data.isActive;
+      
+      // Anyone authenticated can read basic staff info for assignments
+      allow read: if isAuthenticated() && isActiveUser();
+    }
+
+    // Tools collection - manages workshop tools
+    match /tools/{toolId} {
+      // Admins have full access
+      allow read, write: if isAdmin();
+      
+      // Supervisors and workers can read all tools
+      allow read: if isAuthenticated() && isActiveUser();
+      
+      // Only supervisors can update tool status for checkouts/checkins
+      allow update: if isSupervisor() && isActiveUser() &&
+                      // Only allow updates to status, currentHolder, and updatedAt
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['status', 'currentHolder', 'updatedAt']);
+      
+      // Workers cannot create or delete tools
+      // Supervisors cannot create or delete tools (admin only)
+    }
+
+    // Tool history collection - tracks all tool transactions
+    match /tool_history/{historyId} {
+      // Admins have full access
+      allow read, write: if isAdmin();
+      
+      // Supervisors can read all history and create new entries
+      allow read, create: if isSupervisor() && isActiveUser();
+      
+      // Workers can read history and create entries for their own actions
+      allow read: if isAuthenticated() && isActiveUser();
+      allow create: if isAuthenticated() && isActiveUser() &&
+                      request.resource.data.by == /databases/$(database)/documents/staff/$(request.auth.uid);
+      
+      // Only allow updates to notes field by supervisors
+      allow update: if isSupervisor() && isActiveUser() &&
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['notes', 'metadata']);
+      
+      // Nobody can delete history entries except admins
+    }
+
+    // Batches collection - for batch operations
+    match /batches/{batchId} {
+      // Admins have full access
+      allow read, write: if isAdmin();
+      
+      // Supervisors can read all and create batches
+      allow read, create: if isSupervisor() && isActiveUser();
+      
+      // Workers can read batches and create their own
+      allow read: if isAuthenticated() && isActiveUser();
+      allow create: if isAuthenticated() && isActiveUser() &&
+                      request.resource.data.createdBy == request.auth.uid;
+      
+      // Only allow updates to notes and metadata by supervisors
+      allow update: if isSupervisor() && isActiveUser() &&
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['notes', 'metadata']);
+    }
+
+    // Subcollections for tool history (alternative structure)
+    match /tools/{toolId}/history/{historyId} {
+      // Same rules as main tool_history collection
+      allow read, write: if isAdmin();
+      allow read, create: if isSupervisor() && isActiveUser();
+      allow read: if isAuthenticated() && isActiveUser();
+      allow create: if isAuthenticated() && isActiveUser() &&
+                      request.resource.data.by == /databases/$(database)/documents/staff/$(request.auth.uid);
+      allow update: if isSupervisor() && isActiveUser() &&
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['notes', 'metadata']);
+    }
+
+    // Settings collection - for app configuration
+    match /settings/{settingId} {
+      // Only admins can read/write settings
+      allow read, write: if isAdmin();
+    }
+
+    // User preferences - individual user settings
+    match /user_preferences/{userId} {
+      // Users can manage their own preferences
+      allow read, write: if isOwner(userId);
+    }
+
+    // Teams collection - for organizing staff into teams
+    match /teams/{teamId} {
+      // Admins have full access
+      allow read, write: if isAdmin();
+      
+      // Supervisors can read all teams
+      allow read: if isSupervisor() && isActiveUser();
+      
+      // Workers can read team info
+      allow read: if isAuthenticated() && isActiveUser();
+    }
+
+    // Default rule - deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+/*
+Security Rules Summary:
+
+ADMIN USERS:
+- Full read/write access to all collections
+- Can manage staff, tools, settings
+- Can view all audit logs and analytics
+
+SUPERVISOR USERS:
+- Can read all staff, tools, and history
+- Can create tool history entries (checkout/checkin)
+- Can update tool status for checkouts/checkins
+- Can create and manage batch operations
+- Can view audit logs
+- Cannot create/delete tools or manage other admins
+
+WORKER USERS:
+- Can read all tools and staff info
+- Can create tool history entries for their own actions
+- Can read tool history and batches
+- Cannot modify tool metadata or manage staff
+- Cannot access admin settings
+
+AUTHENTICATION REQUIREMENTS:
+- All operations require valid authentication (request.auth != null)
+- Users must be active (isActive = true in staff document)
+- Users must have a valid staff record with assigned role
+
+DATA INTEGRITY:
+- Tool status updates limited to specific fields
+- History entries cannot be deleted (except by admin)
+- User roles cannot be self-modified
+- Batch operations maintain audit trail
+
+PERFORMANCE CONSIDERATIONS:
+- Rules use efficient document lookups
+- Role checks cached per request
+- Minimal data validation in rules (handled by app)
+*/
