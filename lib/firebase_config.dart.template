@@ -1,0 +1,33 @@
+// firebase_config.dart
+//
+// This file contains Firebase configuration constants.
+// You'll need to replace these with your actual Firebase project configuration.
+//
+// IMPORTANT: Copy this file to firebase_config.dart and fill in your actual values
+// DO NOT commit firebase_config.dart to version control
+//
+// To get your Firebase configuration:
+// 1. Go to https://console.firebase.google.com/
+// 2. Select your project (or create a new one)
+// 3. Go to Project Settings > General
+// 4. Scroll down to "Your apps" section
+// 5. Click on the Flutter/Android/iOS app configuration
+// 6. Copy the configuration values
+
+class FirebaseConfig {
+  // Firebase configuration for your project
+  static const String apiKey = "YOUR_API_KEY";
+  static const String authDomain = "YOUR_PROJECT_ID.firebaseapp.com";
+  static const String projectId = "YOUR_PROJECT_ID";
+  static const String storageBucket = "YOUR_PROJECT_ID.firebasestorage.app";
+  static const String messagingSenderId = "YOUR_MESSAGING_SENDER_ID";
+  static const String appId = "YOUR_WEB_APP_ID";
+  static const String measurementId = "YOUR_MEASUREMENT_ID";
+
+  // For Android (get from Firebase Console for Android app)
+  static const String androidGoogleAppId = "YOUR_ANDROID_APP_ID";
+
+  // For iOS (get from Firebase Console for iOS app)
+  static const String iosGoogleAppId = "YOUR_IOS_APP_ID";
+  static const String iosBundleId = "com.example.versfeld";
+}
