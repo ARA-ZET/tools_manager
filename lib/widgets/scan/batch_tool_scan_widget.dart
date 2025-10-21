@@ -3,10 +3,11 @@ import 'package:provider/provider.dart';
 import '../../core/theme/mallon_theme.dart';
 import '../../models/staff.dart';
 import '../../models/tool.dart';
+import '../../models/consumable.dart';
 import '../../providers/tools_provider.dart';
 import '../../providers/scan_provider.dart';
 import '../../providers/staff_provider.dart';
-import '../tool_scanner.dart';
+import '../universal_scanner.dart';
 import 'tool_scan_dialogs.dart';
 import 'tool_transaction_handler.dart';
 
@@ -24,6 +25,9 @@ class BatchToolScanWidget extends StatefulWidget {
 class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
   final TextEditingController _batchSearchController = TextEditingController();
   bool _isDialogShowing = false;
+  String? _lastScannedId;
+  String? _lastScannedType;
+  bool _isProcessing = false;
 
   @override
   void dispose() {
@@ -31,7 +35,100 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
     super.dispose();
   }
 
-  /// Handle scanned code in batch mode
+  /// Update scan feedback UI
+  void _updateScanFeedback(String id, String type, bool processing) {
+    if (mounted) {
+      setState(() {
+        _lastScannedId = id;
+        _lastScannedType = type;
+        _isProcessing = processing;
+      });
+    }
+  }
+
+  /// Clear scan feedback UI
+  void _clearScanFeedback() {
+    if (mounted) {
+      setState(() {
+        _lastScannedId = null;
+        _lastScannedType = null;
+        _isProcessing = false;
+      });
+    }
+  }
+
+  /// Handle scanned item in batch mode
+  void _handleScannedItem(ScannedItem scannedItem) async {
+    debugPrint(
+      '🔍 Batch mode - Scanned: ${scannedItem.typeLabel} ${scannedItem.id}',
+    );
+
+    // Prevent multiple dialogs
+    if (_isDialogShowing) {
+      debugPrint('🚫 Dialog already showing - ignoring scan');
+      return;
+    }
+
+    final scanProvider = context.read<ScanProvider>();
+
+    // Check if already processing
+    if (scanProvider.isProcessing) {
+      debugPrint('🚫 Already processing a scan - ignoring');
+      return;
+    }
+
+    // Handle based on item type
+    if (scannedItem.type == ScannedItemType.tool) {
+      final tool = scannedItem.item as Tool;
+      // Update UI feedback
+      _updateScanFeedback(scannedItem.id, 'Tool', true);
+      _handleScannedCode(tool.qrPayload);
+    } else if (scannedItem.type == ScannedItemType.consumable) {
+      final consumable = scannedItem.item as Consumable;
+
+      // Update UI feedback instead of snackbar
+      _updateScanFeedback(
+        scannedItem.id,
+        'Consumable: ${consumable.name}',
+        false,
+      );
+
+      // For consumables in batch mode, set flag to prevent repeated scans
+      _isDialogShowing = true;
+
+      if (!mounted) {
+        _isDialogShowing = false;
+        _clearScanFeedback();
+        return;
+      }
+
+      debugPrint(
+        '🔍 Batch mode - showing consumable info for ${consumable.name}',
+      );
+
+      // Show feedback for 3 seconds, then allow "View" action
+      await Future.delayed(const Duration(seconds: 2));
+
+      if (!mounted) {
+        _isDialogShowing = false;
+        _clearScanFeedback();
+        return;
+      }
+
+      // Clear feedback and reset flag
+      _clearScanFeedback();
+      _isDialogShowing = false;
+
+      debugPrint('✅ Batch mode - ready for new scan after consumable display');
+    } else {
+      // Unknown item type - show in UI
+      _updateScanFeedback(scannedItem.id, 'Unknown', false);
+      await Future.delayed(const Duration(seconds: 2));
+      _clearScanFeedback();
+    }
+  }
+
+  /// Handle scanned code in batch mode (for tools)
   void _handleScannedCode(String code) async {
     debugPrint('🔍 Batch mode - Scanned code: $code');
 
@@ -91,7 +188,11 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
         '❌ Tool $toolId not found in real-time cache - showing not found dialog',
       );
       _isDialogShowing = true;
-      await ToolScanDialogs.showToolNotFound(context, toolId);
+      await showDialog(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (context) => ToolNotFoundDialog(toolId: toolId),
+      );
       _isDialogShowing = false;
       return;
     }
@@ -102,7 +203,11 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
         '⚠️ Tool $toolId already in batch - showing already added dialog',
       );
       _isDialogShowing = true;
-      await ToolScanDialogs.showToolAlreadyInBatch(context, toolId);
+      await showDialog(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (context) => ToolAlreadyInBatchDialog(toolId: toolId),
+      );
       _isDialogShowing = false;
       return;
     }
@@ -176,9 +281,10 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
     // Tool exists, not in batch, and matches batch type - show confirmation dialog
     debugPrint('✅ Tool $toolId is valid and new - showing add dialog');
     _isDialogShowing = true;
-    final confirmed = await ToolScanDialogs.showAddToBatchConfirmation(
-      context,
-      tool,
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (context) => AddToBatchConfirmationDialog(tool: tool),
     );
     _isDialogShowing = false;
 
@@ -193,15 +299,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       }
 
       scanProvider.addToBatch(tool.uniqueId);
-
-      // Show success feedback
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Added ${tool.name} to batch'),
-          backgroundColor: MallonColors.successGreen,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      // Success feedback shown in camera overlay
     }
   }
 
@@ -224,7 +322,11 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
     } else {
       // Show tool not found dialog
       _isDialogShowing = true;
-      await ToolScanDialogs.showToolNotFound(context, input.trim());
+      await showDialog(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (context) => ToolNotFoundDialog(toolId: input.trim()),
+      );
       _isDialogShowing = false;
     }
 
@@ -236,14 +338,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
   void _removeBatchTool(String toolId) {
     final scanProvider = context.read<ScanProvider>();
     scanProvider.removeFromBatch(toolId);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Removed $toolId from batch'),
-        duration: const Duration(seconds: 2),
-        backgroundColor: MallonColors.warning,
-      ),
-    );
+    // Removal feedback shown in batch list UI
   }
 
   /// Show batch submit dialog with checkout/checkin options
@@ -305,21 +400,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
         // Success callback - clear batch
         if (mounted) {
           scanProvider.clearBatch();
-
-          // Show success message with batch ID
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Batch checkout completed${selectedStaff != null ? ' to ${selectedStaff.fullName}' : ''}',
-              ),
-              backgroundColor: MallonColors.successGreen,
-              action: SnackBarAction(
-                label: 'Batch ID: $batchId',
-                textColor: Colors.white,
-                onPressed: () {},
-              ),
-            ),
-          );
+          // Success feedback shown by transaction handler
         }
       },
     );
@@ -345,12 +426,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
         // Success callback - clear batch
         if (mounted) {
           scanProvider.clearBatch();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Batch check-in completed (ID: $batchId)'),
-              backgroundColor: Colors.orange,
-            ),
-          );
+          // Success feedback shown by transaction handler
         }
       },
     );
@@ -363,14 +439,18 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
         // Scanner Area - Fixed height
         Container(
           height: 360,
-
           width: double.infinity,
           margin: const EdgeInsets.all(16),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: ToolScanner(
-              onToolScanned: _handleScannedCode,
+            child: UniversalScanner(
+              onItemScanned: _handleScannedItem,
+              allowTools: true,
+              allowConsumables: true,
               batchMode: true,
+              lastScannedId: _lastScannedId,
+              lastScannedType: _lastScannedType,
+              isProcessing: _isProcessing,
             ),
           ),
         ),
@@ -958,13 +1038,7 @@ class _BatchActionsCard extends StatelessWidget {
                               ? null
                               : () {
                                   scanProvider.clearBatch();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: const Text('Batch cleared'),
-                                      duration: const Duration(seconds: 2),
-                                      backgroundColor: MallonColors.warning,
-                                    ),
-                                  );
+                                  // Clear feedback shown in batch list UI
                                 },
                           icon: const Icon(Icons.clear_all),
                           label: const Text('Clear Batch'),
@@ -1184,7 +1258,7 @@ class _BatchSubmitDialogState extends State<_BatchSubmitDialog> {
               )
             else
               DropdownButtonFormField<Staff>(
-                value: _selectedStaff,
+                initialValue: _selectedStaff,
                 decoration: const InputDecoration(
                   labelText: 'Select Staff Member',
                   border: OutlineInputBorder(),

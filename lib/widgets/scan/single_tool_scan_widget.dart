@@ -3,10 +3,12 @@ import 'package:provider/provider.dart';
 import '../../core/theme/mallon_theme.dart';
 import '../../models/staff.dart';
 import '../../models/tool.dart';
+import '../../models/consumable.dart';
 import '../../providers/tools_provider.dart';
 import '../../providers/scan_provider.dart';
 import '../../services/secure_tool_transaction_service.dart';
-import '../tool_scanner.dart';
+import '../universal_scanner.dart';
+import '../../screens/consumable_detail_screen.dart';
 import 'tool_scan_dialogs.dart';
 import 'tool_transaction_handler.dart';
 
@@ -27,6 +29,9 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
       SecureToolTransactionService();
 
   bool _isDialogShowing = false;
+  String? _lastScannedId;
+  String? _lastScannedType;
+  bool _isProcessing = false;
 
   @override
   void dispose() {
@@ -34,13 +39,102 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
     super.dispose();
   }
 
+  /// Update scan feedback UI
+  void _updateScanFeedback(String id, String type, bool processing) {
+    if (mounted) {
+      setState(() {
+        _lastScannedId = id;
+        _lastScannedType = type;
+        _isProcessing = processing;
+      });
+    }
+  }
+
+  /// Clear scan feedback UI
+  void _clearScanFeedback() {
+    if (mounted) {
+      setState(() {
+        _lastScannedId = null;
+        _lastScannedType = null;
+        _isProcessing = false;
+      });
+    }
+  }
+
   /// Reset dialog state flag
   void _resetDialogState() {
     debugPrint('🔄 Dialog state reset (was: $_isDialogShowing)');
     _isDialogShowing = false;
+    _clearScanFeedback();
   }
 
-  /// Handle scanned code in single mode
+  /// Handle scanned item in single mode
+  void _handleScannedItem(ScannedItem scannedItem) async {
+    debugPrint(
+      '🔍 Single mode - Scanned: ${scannedItem.typeLabel} ${scannedItem.id}',
+    );
+
+    // Prevent multiple dialogs/navigations
+    if (_isDialogShowing) {
+      debugPrint('🚫 Dialog already showing - ignoring scan');
+      return;
+    }
+
+    final scanProvider = context.read<ScanProvider>();
+
+    // Handle based on item type
+    if (scannedItem.type == ScannedItemType.tool) {
+      final tool = scannedItem.item as Tool;
+      // Update UI feedback
+      _updateScanFeedback(scannedItem.id, 'Tool', true);
+      _handleScannedCode(tool.qrPayload);
+    } else if (scannedItem.type == ScannedItemType.consumable) {
+      // Update UI feedback
+      final consumable = scannedItem.item as Consumable;
+      _updateScanFeedback(
+        scannedItem.id,
+        'Consumable: ${consumable.name}',
+        true,
+      );
+
+      // Set flag to prevent multiple navigations
+      _isDialogShowing = true;
+
+      // Reset scanner debounce to allow new scans after returning
+      scanProvider.resetDebounce();
+
+      if (!mounted) {
+        _isDialogShowing = false;
+        _clearScanFeedback();
+        return;
+      }
+
+      debugPrint('🔍 Navigating to consumable detail for ${consumable.name}');
+
+      // Small delay to show feedback
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Navigate to consumable detail screen
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ConsumableDetailScreen(consumable: consumable),
+        ),
+      );
+
+      // Reset flag and clear feedback after returning from navigation
+      _resetDialogState();
+      _clearScanFeedback();
+      debugPrint('✅ Returned from consumable detail - ready for new scan');
+    } else {
+      // Unknown item type - show in UI
+      _updateScanFeedback(scannedItem.id, 'Unknown', false);
+      await Future.delayed(const Duration(seconds: 2));
+      _clearScanFeedback();
+    }
+  }
+
+  /// Handle scanned code in single mode (for tools)
   void _handleScannedCode(String code) async {
     debugPrint('🔍 Single mode - Scanned code: $code');
 
@@ -119,7 +213,11 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
 
       if (tool == null) {
         if (mounted) {
-          await ToolScanDialogs.showToolNotFound(context, toolId);
+          await showDialog(
+            context: context,
+            barrierColor: Colors.black54,
+            builder: (context) => ToolNotFoundDialog(toolId: toolId),
+          );
         }
         _resetDialogState();
         scanProvider.setProcessing(false);
@@ -137,7 +235,11 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
         debugPrint('❌ No staff logged in');
         scanProvider.setProcessing(false);
         if (mounted) {
-          ToolScanDialogs.showNotLoggedIn(context);
+          showDialog(
+            context: context,
+            barrierColor: Colors.black54,
+            builder: (context) => const NotLoggedInDialog(),
+          );
         }
         _resetDialogState();
         return;
@@ -162,14 +264,8 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
     } catch (e) {
       _resetDialogState();
       scanProvider.setProcessing(false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading tool: ${e.toString()}'),
-            backgroundColor: MallonColors.error,
-          ),
-        );
-      }
+      // Error will be shown in dialog if needed
+      debugPrint('❌ Error loading tool: $e');
     } finally {
       // ALWAYS reset processing state, even if context is not mounted
       // This prevents the "Already processing" lockup
@@ -186,14 +282,7 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
       final currentTool = toolsProvider.getToolByUniqueId(tool.uniqueId);
 
       if (currentTool == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Tool ${tool.uniqueId} not found'),
-              backgroundColor: MallonColors.error,
-            ),
-          );
-        }
+        debugPrint('❌ Tool ${tool.uniqueId} not found');
         return;
       }
 
@@ -202,14 +291,7 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
       );
 
       if (toolStatus == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Unable to load tool status'),
-              backgroundColor: MallonColors.error,
-            ),
-          );
-        }
+        debugPrint('❌ Unable to load tool status for ${currentTool.uniqueId}');
         return;
       }
 
@@ -233,7 +315,7 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ToolScanDialogs.buildToolInfoSection(currentTool, toolStatus),
+                ToolInfoSection(tool: currentTool, toolStatus: toolStatus),
                 const SizedBox(height: 16),
                 Text(
                   'Admin Actions',
@@ -347,14 +429,7 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
         ),
       );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading tool status: ${e.toString()}'),
-            backgroundColor: MallonColors.error,
-          ),
-        );
-      }
+      debugPrint('❌ Error loading tool status: $e');
     }
   }
 
@@ -388,9 +463,9 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ToolScanDialogs.buildToolInfoSection(tool, toolStatus),
+                ToolInfoSection(tool: tool, toolStatus: toolStatus),
                 const SizedBox(height: 16),
-                ToolScanDialogs.buildToolHistorySection(context, toolHistory),
+                ToolHistorySection(history: toolHistory),
               ],
             ),
           ),
@@ -469,14 +544,7 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
         ),
       );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading tool details: ${e.toString()}'),
-            backgroundColor: MallonColors.error,
-          ),
-        );
-      }
+      debugPrint('❌ Error loading tool details: $e');
     }
   }
 
@@ -484,16 +552,21 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Scanner Area - Fixed height
+        // Scanner Area - Fixed height with feedback overlay
         Container(
           height: 360,
           width: double.infinity,
           margin: const EdgeInsets.all(16),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: ToolScanner(
-              onToolScanned: _handleScannedCode,
+            child: UniversalScanner(
+              onItemScanned: _handleScannedItem,
+              allowTools: true,
+              allowConsumables: true,
               batchMode: false,
+              lastScannedId: _lastScannedId,
+              lastScannedType: _lastScannedType,
+              isProcessing: _isProcessing,
             ),
           ),
         ),

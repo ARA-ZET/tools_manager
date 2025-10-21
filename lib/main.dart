@@ -6,6 +6,7 @@ import 'providers/tools_provider.dart';
 import 'providers/staff_provider.dart';
 import 'providers/transactions_provider.dart';
 import 'providers/scan_provider.dart';
+import 'providers/consumables_provider.dart';
 import 'services/admin_initialization_service.dart';
 import 'core/theme/mallon_theme.dart';
 import 'core/routing/app_router.dart';
@@ -27,6 +28,9 @@ void main() async {
 
         // Tools provider - always available
         ChangeNotifierProvider(create: (context) => ToolsProvider()),
+
+        // Consumables provider - always available for all users
+        ChangeNotifierProvider(create: (context) => ConsumablesProvider()),
 
         // Staff provider - admin only, will be initialized based on auth
         ChangeNotifierProvider(create: (context) => StaffProvider()),
@@ -102,6 +106,11 @@ class _MyAppState extends State<MyApp> {
     print(
       'Transactions provider initialized with access: ${isAdmin || isSupervisor}',
     );
+
+    // Consumables provider - initialize for all authenticated users
+    final consumablesProvider = context.read<ConsumablesProvider>();
+    await consumablesProvider.initialize();
+    print('Consumables provider initialized');
   }
 
   /// Reset providers initialization flag (useful for debugging)

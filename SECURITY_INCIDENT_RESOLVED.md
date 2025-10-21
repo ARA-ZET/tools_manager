@@ -9,16 +9,19 @@ GitHub detected that your Firebase API key was exposed in the repository in file
 ## ✅ What Was Fixed
 
 ### 1. Removed from Git History
+
 - Used `git filter-branch` to remove `lib/firebase_config.dart` from entire Git history
 - Force pushed to GitHub to replace the compromised history
 - File is now completely removed from the repository
 
 ### 2. Added to Security Protection
+
 - Added `lib/firebase_config.dart` to `.gitignore`
 - Created `lib/firebase_config.dart.template` for team setup
 - File will never be committed again
 
 ### 3. Repository Cleaned
+
 - GitHub history no longer contains the API key
 - Template file is safe and can be shared
 
@@ -69,6 +72,7 @@ flutterfire configure
 ```
 
 This will update:
+
 - `lib/firebase_options.dart`
 - `android/app/google-services.json`
 - `ios/Runner/GoogleService-Info.plist`
@@ -76,12 +80,14 @@ This will update:
 ## 📊 Security Status
 
 ### ✅ Fixed
+
 - ✓ API key removed from GitHub repository
 - ✓ Git history cleaned (force pushed)
 - ✓ File added to .gitignore
 - ✓ Template file created for team
 
 ### ⚠️ Action Required (DO THIS NOW)
+
 - ❌ **ROTATE/REVOKE the exposed API key in Google Cloud Console**
 - ❌ **Create and restrict a new API key**
 - ❌ **Update local configuration with new key**
@@ -90,14 +96,18 @@ This will update:
 ## 🔍 Check for Other Exposures
 
 ### 1. Check Other Services
+
 If you used this API key elsewhere, update those too:
+
 - Web applications
 - Mobile apps already deployed
 - CI/CD pipelines
 - Team member configurations
 
 ### 2. Review Firebase Authentication Logs
+
 Check for any unauthorized access:
+
 1. Go to Firebase Console
 2. **Authentication** → **Users**
 3. Check for any suspicious accounts
@@ -105,7 +115,9 @@ Check for any unauthorized access:
 5. Ensure only your domains are listed
 
 ### 3. Review Firestore Access
+
 Check your Firestore for any unauthorized data access:
+
 1. Go to Firebase Console → **Firestore Database**
 2. Check for any unexpected data changes
 3. Review your security rules in `firestore.rules`
@@ -113,7 +125,9 @@ Check your Firestore for any unauthorized data access:
 ## 🛡️ Future Prevention
 
 ### 1. Always Use .gitignore
+
 Ensure these files are ALWAYS gitignored:
+
 ```gitignore
 lib/firebase_config.dart
 lib/firebase_options.dart
@@ -124,12 +138,15 @@ ios/Runner/GoogleService-Info.plist
 ```
 
 ### 2. Use Security Scanning
+
 Enable GitHub security features:
+
 - ✅ Secret scanning (already detected this issue!)
 - ✅ Dependabot alerts
 - ✅ Code scanning
 
 ### 3. Pre-commit Hooks
+
 Consider adding a pre-commit hook:
 
 ```bash
@@ -143,7 +160,9 @@ fi
 ```
 
 ### 4. Use Environment Variables (Advanced)
+
 For production, consider using environment variables:
+
 ```dart
 // Use flutter_dotenv or similar
 final apiKey = dotenv.env['FIREBASE_API_KEY'] ?? '';

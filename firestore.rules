@@ -153,6 +153,44 @@ service cloud.firestore {
       allow read: if isAuthenticated() && isActiveUser();
     }
 
+    // Consumables collection - manages workshop consumable inventory
+    match /consumables/{consumableId} {
+      // Admins have full access
+      allow read, write: if isAdmin();
+      
+      // Supervisors and workers can read all consumables
+      allow read: if isAuthenticated() && isActiveUser();
+      
+      // Supervisors can update consumable quantities
+      allow update: if isSupervisor() && isActiveUser() &&
+                      // Allow updates to quantity and updatedAt
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['currentQuantity', 'updatedAt']);
+      
+      // Workers and supervisors cannot create or delete consumables (admin only)
+    }
+
+    // Consumable transactions collection - tracks usage and restocking
+    match /consumable_transactions/{transactionId} {
+      // Admins have full access
+      allow read, write: if isAdmin();
+      
+      // Supervisors can read all and create transactions
+      allow read, create: if isSupervisor() && isActiveUser();
+      
+      // Workers can read transactions and create their own usage entries
+      allow read: if isAuthenticated() && isActiveUser();
+      allow create: if isAuthenticated() && isActiveUser() &&
+                      request.resource.data.usedBy == /databases/$(database)/documents/staff/$(request.auth.uid);
+      
+      // Only allow updates to notes by supervisors
+      allow update: if isSupervisor() && isActiveUser() &&
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['notes', 'metadata']);
+      
+      // Nobody can delete transaction entries except admins
+    }
+
     // Default rule - deny all other access
     match /{document=**} {
       allow read, write: if false;

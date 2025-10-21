@@ -146,22 +146,25 @@ Firestore security rules implement role-based access control:
 **Before cloning or pushing to GitHub**, secure your Firebase configuration:
 
 1. **Review Security Documentation**
+
    ```bash
    # Read the comprehensive security guide
    cat docs/SECURITY_SETUP.md
    ```
 
 2. **For New Developers Cloning the Repo**
+
    - Firebase configuration files are NOT included in the repository
    - You need to set up your own Firebase project OR
    - Request configuration files from the project administrator
-   
+
    **Quick Setup:**
+
    ```bash
    # Option A: Use FlutterFire CLI (Recommended)
    dart pub global activate flutterfire_cli
    flutterfire configure
-   
+
    # Option B: Manual Setup
    cp lib/firebase_options.dart.template lib/firebase_options.dart
    cp android/app/google-services.json.template android/app/google-services.json
@@ -170,10 +173,11 @@ Firestore security rules implement role-based access control:
    ```
 
 3. **Before Pushing to GitHub**
+
    ```bash
    # Run security check script
    ./scripts/security_check.sh
-   
+
    # This verifies:
    # - Sensitive files are NOT tracked by Git
    # - .gitignore is properly configured
@@ -181,6 +185,7 @@ Firestore security rules implement role-based access control:
    ```
 
 📚 **Detailed Guides:**
+
 - [Security Setup Guide](docs/SECURITY_SETUP.md) - Complete security configuration
 - [GitHub Setup Guide](docs/GITHUB_SETUP.md) - Push to GitHub safely
 

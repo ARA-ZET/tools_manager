@@ -1,11 +1,13 @@
 # Security Setup Guide
 
 ## Overview
+
 This guide explains how to securely configure Firebase and protect API keys when working with the Versfeld Tool Manager and pushing to GitHub.
 
 ## 🔒 Security Principles
 
 **NEVER commit these files to version control:**
+
 - `lib/firebase_options.dart` - Contains Firebase API keys
 - `android/app/google-services.json` - Android Firebase configuration
 - `ios/Runner/GoogleService-Info.plist` - iOS Firebase configuration
@@ -19,6 +21,7 @@ This guide explains how to securely configure Firebase and protect API keys when
 **Step 1: Get Firebase Configuration Files**
 
 You need to obtain these files from:
+
 - Firebase Console: https://console.firebase.google.com/
 - Or from the project administrator
 
@@ -36,7 +39,9 @@ cp ios/Runner/GoogleService-Info.plist.template ios/Runner/GoogleService-Info.pl
 Edit each file and replace the placeholder values:
 
 #### `lib/firebase_options.dart`
+
 Replace:
+
 - `YOUR_WEB_API_KEY`
 - `YOUR_ANDROID_API_KEY`
 - `YOUR_IOS_API_KEY`
@@ -45,14 +50,18 @@ Replace:
 - etc.
 
 #### `android/app/google-services.json`
+
 Download from Firebase Console:
+
 1. Go to Project Settings → General
 2. Select your Android app
 3. Click "google-services.json" download button
 4. Replace the template file
 
 #### `ios/Runner/GoogleService-Info.plist`
+
 Download from Firebase Console:
+
 1. Go to Project Settings → General
 2. Select your iOS app
 3. Click "GoogleService-Info.plist" download button
@@ -117,6 +126,7 @@ If you prefer manual setup, follow the Initial Setup steps above.
 Your Firestore security rules are in `firestore.rules` and can be committed to version control. These rules protect your database, not your API keys.
 
 **Current security model:**
+
 - Role-based access control (Admin, Supervisor, Worker)
 - Server-side permission enforcement
 - Rules validate operations based on user roles
@@ -171,6 +181,7 @@ git push -u origin main
 ### When Cloning the Repository
 
 1. **Clone the repository**:
+
 ```bash
 git clone https://github.com/YOUR_USERNAME/versfeld.git
 cd versfeld
@@ -179,15 +190,18 @@ cd versfeld
 2. **Contact project admin** for Firebase configuration files
 
 3. **Set up Firebase configuration** using one of these methods:
+
    - Run `flutterfire configure` (easiest)
    - Manually copy the three configuration files to correct locations
 
 4. **Install dependencies**:
+
 ```bash
 flutter pub get
 ```
 
 5. **Run the app**:
+
 ```bash
 flutter run
 ```
@@ -233,12 +247,12 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isAdmin() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
              getUserRole(request.auth.uid) == 'admin';
     }
-    
+
     // Protect sensitive collections
     match /tools/{toolId} {
       allow read: if isAuthenticated();
@@ -253,11 +267,13 @@ service cloud.firestore {
 ### If Keys Are Already on GitHub:
 
 1. **Rotate ALL API keys immediately**:
+
    - Generate new keys in Firebase Console
    - Update local configuration files
    - Revoke old keys
 
 2. **Remove from Git history**:
+
 ```bash
 # Use BFG Repo-Cleaner (recommended)
 brew install bfg
@@ -272,6 +288,7 @@ git filter-branch --force --index-filter \
 ```
 
 3. **Force push** (⚠️ DANGER: coordinate with team):
+
 ```bash
 git push origin --force --all
 git push origin --force --tags
@@ -287,12 +304,14 @@ git push origin --force --tags
 ## 📞 Support
 
 If you need Firebase configuration files or have security concerns:
+
 - Contact: richardatclm@gmail.com
 - Or create an issue in the GitHub repository (don't include sensitive data!)
 
 ## ✅ Security Checklist
 
 Before pushing to GitHub:
+
 - [ ] `.gitignore` includes all sensitive files
 - [ ] `firebase_options.dart` is not tracked by Git
 - [ ] `google-services.json` is not tracked by Git

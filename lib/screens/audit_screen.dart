@@ -430,7 +430,9 @@ class _AuditScreenState extends State<AuditScreen> {
           final metadata = transaction['metadata'] as Map<String, dynamic>?;
           final notes = transaction['notes'] as String?;
           final batchId = transaction['batchId'] as String?;
-          final isBatch = batchId != null || (notes != null && notes.contains('Batch operation:'));
+          final isBatch =
+              batchId != null ||
+              (notes != null && notes.contains('Batch operation:'));
 
           return _ActivityItem(
             action: transaction['action'] as String? ?? 'unknown',
@@ -706,8 +708,8 @@ class _ActivityItemState extends State<_ActivityItem> {
   @override
   Widget build(BuildContext context) {
     final isCheckout = widget.action.toLowerCase() == 'checkout';
-    final actionColor = isCheckout 
-        ? MallonColors.checkedOut 
+    final actionColor = isCheckout
+        ? MallonColors.checkedOut
         : MallonColors.available;
 
     return Card(
@@ -738,7 +740,10 @@ class _ActivityItemState extends State<_ActivityItem> {
                 ),
                 if (widget.isBatch)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: MallonColors.primaryGreen.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -812,7 +817,11 @@ class _ActivityItemState extends State<_ActivityItem> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.info_outline, size: 18, color: actionColor),
+                            Icon(
+                              Icons.info_outline,
+                              size: 18,
+                              color: actionColor,
+                            ),
                             const SizedBox(width: 8),
                             const Text(
                               'Transaction Details',
@@ -830,12 +839,15 @@ class _ActivityItemState extends State<_ActivityItem> {
                           value: widget.toolName,
                           color: actionColor,
                         ),
-                        if (widget.toolBrand != null || widget.toolModel != null) ...[
+                        if (widget.toolBrand != null ||
+                            widget.toolModel != null) ...[
                           const SizedBox(height: 8),
                           _buildDetailRow(
                             icon: Icons.label,
                             label: 'Brand & Model',
-                            value: '${widget.toolBrand ?? ''} ${widget.toolModel ?? ''}'.trim(),
+                            value:
+                                '${widget.toolBrand ?? ''} ${widget.toolModel ?? ''}'
+                                    .trim(),
                             color: actionColor,
                           ),
                         ],
@@ -857,7 +869,8 @@ class _ActivityItemState extends State<_ActivityItem> {
                         _buildDetailRow(
                           icon: Icons.access_time,
                           label: 'Timestamp',
-                          value: '${widget.timestamp.day}/${widget.timestamp.month}/${widget.timestamp.year} at ${widget.timestamp.hour}:${widget.timestamp.minute.toString().padLeft(2, '0')}',
+                          value:
+                              '${widget.timestamp.day}/${widget.timestamp.month}/${widget.timestamp.year} at ${widget.timestamp.hour}:${widget.timestamp.minute.toString().padLeft(2, '0')}',
                           color: actionColor,
                         ),
                         if (widget.isBatch && widget.batchId != null) ...[
@@ -869,7 +882,8 @@ class _ActivityItemState extends State<_ActivityItem> {
                             color: actionColor,
                           ),
                         ],
-                        if (widget.notes != null && widget.notes!.isNotEmpty) ...[
+                        if (widget.notes != null &&
+                            widget.notes!.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           _buildDetailRow(
                             icon: Icons.notes,
@@ -1123,7 +1137,11 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.info_outline, size: 18, color: batchColor),
+                            Icon(
+                              Icons.info_outline,
+                              size: 18,
+                              color: batchColor,
+                            ),
                             const SizedBox(width: 8),
                             const Text(
                               'Batch Details',
@@ -1152,7 +1170,8 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
                         _buildDetailRow(
                           icon: Icons.build,
                           label: 'Tools Count',
-                          value: '${widget.transactions.length} tool${widget.transactions.length > 1 ? 's' : ''}',
+                          value:
+                              '${widget.transactions.length} tool${widget.transactions.length > 1 ? 's' : ''}',
                           color: batchColor,
                         ),
                         const SizedBox(height: 8),
@@ -1166,7 +1185,8 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
                         _buildDetailRow(
                           icon: Icons.access_time,
                           label: 'Timestamp',
-                          value: '${widget.timestamp.day}/${widget.timestamp.month}/${widget.timestamp.year} at ${widget.timestamp.hour}:${widget.timestamp.minute.toString().padLeft(2, '0')}',
+                          value:
+                              '${widget.timestamp.day}/${widget.timestamp.month}/${widget.timestamp.year} at ${widget.timestamp.hour}:${widget.timestamp.minute.toString().padLeft(2, '0')}',
                           color: batchColor,
                         ),
                       ],
@@ -1191,11 +1211,13 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
                   ...widget.transactions.asMap().entries.map((entry) {
                     final index = entry.key;
                     final transaction = entry.value;
-                    final metadata = transaction['metadata'] as Map<String, dynamic>?;
-                    final toolName = metadata?['toolName'] as String? ?? 'Unknown Tool';
+                    final metadata =
+                        transaction['metadata'] as Map<String, dynamic>?;
+                    final toolName =
+                        metadata?['toolName'] as String? ?? 'Unknown Tool';
                     final toolBrand = metadata?['toolBrand'] as String?;
                     final toolModel = metadata?['toolModel'] as String?;
-                    
+
                     return Container(
                       margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.all(10),
@@ -1240,7 +1262,8 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
                                   Padding(
                                     padding: const EdgeInsets.only(top: 2),
                                     child: Text(
-                                      '${toolBrand ?? ''} ${toolModel ?? ''}'.trim(),
+                                      '${toolBrand ?? ''} ${toolModel ?? ''}'
+                                          .trim(),
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: Colors.grey[600],

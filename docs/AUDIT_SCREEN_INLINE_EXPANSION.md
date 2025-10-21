@@ -1,18 +1,22 @@
 # Audit Screen - Inline Detail Expansion
 
 ## Overview
+
 Updated the audit screen to display both batch and individual activity details inline using expansion instead of modal dialogs for better UX and consistency.
 
 ## Changes Made
 
 ### Individual Activity Items (`_ActivityItem`)
+
 **Before:**
+
 - StatelessWidget with no interaction
 - All information displayed inline in the card
 - Notes truncated if long
 - No way to see additional details
 
 **After:**
+
 - StatefulWidget with expand/collapse functionality
 - Expand button in trailing position
 - When expanded, shows comprehensive transaction details:
@@ -28,12 +32,15 @@ Updated the audit screen to display both batch and individual activity details i
 - Notes truncated in collapsed state, full in expanded state
 
 ### Batch Group Items (`_BatchGroupItem`)
+
 **Before:**
+
 - Had two buttons in trailing: info button (ⓘ) + expand/collapse button
 - Info button opened a modal dialog with batch details
 - Expand button only showed the tool list
 
 **After:**
+
 - Single expand/collapse button in trailing
 - When expanded, shows comprehensive batch details inline:
   - **Batch Details Section** (white card with border):
@@ -51,10 +58,13 @@ Updated the audit screen to display both batch and individual activity details i
     - Individual white cards with borders for better readability
 
 ### Individual Activity Items (`_ActivityItem`)
+
 **Before:**
+
 - Had onTap handler that opened a modal dialog with transaction details
 
 **After:**
+
 - Removed onTap handler for consistency
 - Individual items now display all information inline in the card:
   - Tool name
@@ -64,6 +74,7 @@ Updated the audit screen to display both batch and individual activity details i
   - Batch badge (if part of batch)
 
 ### Removed Code
+
 - `_showBatchDetail()` method - No longer needed, details shown inline
 - `_showActivityDetail()` method - Removed for consistency
 - `_DetailRow` widget - Was only used by dialogs
@@ -71,6 +82,7 @@ Updated the audit screen to display both batch and individual activity details i
 ## Visual Improvements
 
 ### Individual Activity Expansion
+
 ```
 ┌─────────────────────────────────────────────┐
 │ 🟢 CHECKOUT - Cordless Drill                │
@@ -102,6 +114,7 @@ Updated the audit screen to display both batch and individual activity details i
 ```
 
 ### Batch Expansion
+
 ```
 ┌─────────────────────────────────────────────┐
 │ 🟢 BATCH CHECKOUT - 5 tools                 │
@@ -146,7 +159,7 @@ Updated the audit screen to display both batch and individual activity details i
 1. **Better UX**: No need to open/close dialogs - all info visible with one click
 2. **Consistency**: Both individual and batch items now use the same expansion pattern
 3. **Cleaner Code**: Removed unused dialog methods and widgets
-4. **Better Readability**: 
+4. **Better Readability**:
    - Numbered tools in batch (1, 2, 3...)
    - Structured detail rows for individual items
    - Color-coded sections
@@ -155,6 +168,7 @@ Updated the audit screen to display both batch and individual activity details i
 6. **Smart Truncation**: Notes are truncated when collapsed, full text when expanded
 
 ## Color Coding
+
 - **Checkout** batches: Orange/amber tones (`MallonColors.checkedOut`)
 - **Checkin** batches: Green tones (`MallonColors.available`)
 - Icons and borders use the action's color for visual consistency

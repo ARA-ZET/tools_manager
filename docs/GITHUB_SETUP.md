@@ -7,6 +7,7 @@ Your project is now secure and ready to push to GitHub. Follow these steps:
 ### 1. Create GitHub Repository
 
 **Option A: Via GitHub Website**
+
 1. Go to https://github.com/new
 2. Repository name: `versfeld` (or your preferred name)
 3. Description: "Flutter/Firebase tool management system for workshop QR code-based tool tracking"
@@ -15,6 +16,7 @@ Your project is now secure and ready to push to GitHub. Follow these steps:
 6. Click "Create repository"
 
 **Option B: Via GitHub CLI**
+
 ```bash
 gh repo create versfeld --private --source=. --remote=origin
 ```
@@ -63,6 +65,7 @@ git push -u origin main
 
 1. Go to your GitHub repository
 2. Check that these files **ARE PRESENT**:
+
    - ✅ `.gitignore`
    - ✅ `lib/firebase_options.dart.template`
    - ✅ `android/app/google-services.json.template`
@@ -108,16 +111,19 @@ If you plan to use GitHub Actions:
 ### Recommended Settings
 
 **1. Branch Protection (Settings → Branches)**
+
 - Protect `main` branch
 - Require pull request reviews
 - Require status checks to pass
 
 **2. Security Settings**
+
 - Enable Dependabot alerts
 - Enable Dependabot security updates
 - Enable secret scanning
 
 **3. Collaboration**
+
 - Add team members as collaborators
 - Set appropriate permission levels
 
@@ -169,6 +175,7 @@ chore: updating build tasks, configs, etc.
 ```
 
 Examples:
+
 ```bash
 git commit -m "feat: add batch tool checkout functionality"
 git commit -m "fix: resolve scan processing lock-up issue"
@@ -178,6 +185,7 @@ git commit -m "docs: update security setup guide"
 ## 🆘 Troubleshooting
 
 ### "Repository not found" error
+
 ```bash
 # Check remote URL
 git remote -v
@@ -187,6 +195,7 @@ git remote set-url origin https://github.com/YOUR_USERNAME/versfeld.git
 ```
 
 ### "Updates were rejected" error
+
 ```bash
 # Pull latest changes first
 git pull origin main --rebase
@@ -196,6 +205,7 @@ git push origin main
 ```
 
 ### Accidentally committed sensitive files
+
 ```bash
 # Remove from staging
 git reset HEAD lib/firebase_options.dart
@@ -216,6 +226,7 @@ git reset --soft HEAD~1
 ## ✅ Pre-Push Checklist
 
 Before every push:
+
 - [ ] Run `./scripts/security_check.sh`
 - [ ] Run `flutter analyze` (no errors)
 - [ ] Run `flutter test` (all tests pass)
