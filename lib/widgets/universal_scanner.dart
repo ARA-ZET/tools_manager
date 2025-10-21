@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:provider/provider.dart';
 import '../core/theme/mallon_theme.dart';
 import '../services/camera_service.dart';
 import '../models/tool.dart';
 import '../models/consumable.dart';
-import '../services/tool_service.dart';
-import '../services/consumable_service.dart';
+import '../providers/tools_provider.dart';
+import '../providers/consumables_provider.dart';
 
 /// Scanned item type
 enum ScannedItemType { tool, consumable, unknown }
@@ -69,8 +70,6 @@ class _UniversalScannerState extends State<UniversalScanner>
     with WidgetsBindingObserver {
   final CameraService _cameraService = CameraService();
   final TextEditingController _manualController = TextEditingController();
-  final ToolService _toolService = ToolService();
-  final ConsumableService _consumableService = ConsumableService();
 
   bool _isInitializing = true;
   bool _hasPermission = false;
@@ -80,7 +79,7 @@ class _UniversalScannerState extends State<UniversalScanner>
   // Debouncing for scanner
   String? _lastScannedCode;
   DateTime? _lastScanTime;
-  static const Duration _scanDebounce = Duration(seconds: 2);
+  static const Duration _scanDebounce = Duration(milliseconds: 500); // Reduced from 2 seconds
 
   // Visual feedback state
   bool _showScanFeedback = false;
@@ -166,7 +165,7 @@ class _UniversalScannerState extends State<UniversalScanner>
     }
   }
 
-  Future<void> _handleScan(String scannedCode) async {
+  void _handleScan(String scannedCode) {
     // Debouncing
     final now = DateTime.now();
     if (_lastScannedCode == scannedCode &&
@@ -178,8 +177,8 @@ class _UniversalScannerState extends State<UniversalScanner>
     _lastScannedCode = scannedCode;
     _lastScanTime = now;
 
-    // Parse the scanned code
-    final result = await _parseScannedCode(scannedCode);
+    // Parse the scanned code (instant lookup from cache!)
+    final result = _parseScannedCode(scannedCode);
 
     if (result == null) {
       _showError('Invalid QR code: $scannedCode');
@@ -215,64 +214,76 @@ class _UniversalScannerState extends State<UniversalScanner>
     widget.onItemScanned(result);
   }
 
-  /// Parse scanned code and lookup item
-  Future<ScannedItem?> _parseScannedCode(String code) async {
-    // Try to extract ID from code
-    String extractedId = code;
+  /// Parse scanned code and lookup item (using cached providers - instant!)
+  ScannedItem? _parseScannedCode(String code) {
+    try {
+      // Get providers for instant cached lookups
+      if (!mounted) {
+        debugPrint('❌ Widget not mounted, cannot access providers');
+        return null;
+      }
 
-    // Handle formats like "TOOL#T1234" or "CONSUMABLE#C0001"
-    if (code.contains('#')) {
-      extractedId = code.split('#').last;
-    }
+      final toolsProvider = context.read<ToolsProvider>();
+      final consumablesProvider = context.read<ConsumablesProvider>();
 
-    // Determine type based on prefix
-    if (extractedId.startsWith('T') && widget.allowTools) {
-      // Tool
-      final tool = await _toolService.getToolByUniqueId(extractedId);
-      if (tool != null) {
-        return ScannedItem(
-          type: ScannedItemType.tool,
-          id: extractedId,
-          item: tool,
+      // Try to extract ID from code
+      String extractedId = code;
+
+      // Handle formats like "TOOL#T1234" or "CONSUMABLE#C0001"
+      if (code.contains('#')) {
+        extractedId = code.split('#').last;
+      }
+
+      // Determine type based on prefix
+      if (extractedId.startsWith('T') && widget.allowTools) {
+        // Tool - instant lookup from cache
+        final tool = toolsProvider.getToolByUniqueId(extractedId);
+        if (tool != null) {
+          return ScannedItem(
+            type: ScannedItemType.tool,
+            id: extractedId,
+            item: tool,
+          );
+        }
+      } else if (extractedId.startsWith('C') && widget.allowConsumables) {
+        // Consumable - instant lookup from cache
+        final consumable = consumablesProvider.getConsumableByUniqueId(
+          extractedId,
         );
+        if (consumable != null) {
+          return ScannedItem(
+            type: ScannedItemType.consumable,
+            id: extractedId,
+            item: consumable,
+          );
+        }
       }
-    } else if (extractedId.startsWith('C') && widget.allowConsumables) {
-      // Consumable
-      final consumable = await _consumableService.findConsumableByUniqueId(
-        extractedId,
-      );
-      if (consumable != null) {
-        return ScannedItem(
-          type: ScannedItemType.consumable,
-          id: extractedId,
-          item: consumable,
-        );
-      }
-    }
 
-    // Try as raw tool ID if no prefix
-    if (widget.allowTools) {
-      final tool = await _toolService.getToolByUniqueId(code);
-      if (tool != null) {
-        return ScannedItem(type: ScannedItemType.tool, id: code, item: tool);
+      // Try as raw tool ID if no prefix
+      if (widget.allowTools) {
+        final tool = toolsProvider.getToolByUniqueId(code);
+        if (tool != null) {
+          return ScannedItem(type: ScannedItemType.tool, id: code, item: tool);
+        }
       }
-    }
 
-    // Try as raw consumable ID if no prefix
-    if (widget.allowConsumables) {
-      final consumable = await _consumableService.findConsumableByUniqueId(
-        code,
-      );
-      if (consumable != null) {
-        return ScannedItem(
-          type: ScannedItemType.consumable,
-          id: code,
-          item: consumable,
-        );
+      // Try as raw consumable ID if no prefix
+      if (widget.allowConsumables) {
+        final consumable = consumablesProvider.getConsumableByUniqueId(code);
+        if (consumable != null) {
+          return ScannedItem(
+            type: ScannedItemType.consumable,
+            id: code,
+            item: consumable,
+          );
+        }
       }
-    }
 
-    return null;
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error accessing provider in _parseScannedCode: $e');
+      return null;
+    }
   }
 
   Future<void> _handleManualEntry() async {
@@ -282,7 +293,7 @@ class _UniversalScannerState extends State<UniversalScanner>
       return;
     }
 
-    await _handleScan(code);
+    _handleScan(code);
     _manualController.clear();
   }
 

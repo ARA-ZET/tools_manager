@@ -14,6 +14,7 @@ class ConsumablesProvider with ChangeNotifier {
   List<Consumable> _lowStockConsumables = [];
   List<ConsumableTransaction> _recentTransactions = [];
   Map<String, Consumable> _consumablesById = {};
+  Map<String, Consumable> _consumablesByUniqueId = {};
   List<String> _categories = [];
 
   bool _isLoading = false;
@@ -36,7 +37,24 @@ class ConsumablesProvider with ChangeNotifier {
   String get errorMessage => _errorMessage;
 
   /// Get consumable by ID from cache
-  Consumable? getConsumableById(String id) => _consumablesById[id];
+  Consumable? getConsumableById(String id) {
+    try {
+      return _consumablesById[id];
+    } catch (e) {
+      debugPrint('❌ Error in getConsumableById: $e');
+      return null;
+    }
+  }
+
+  /// Get consumable by unique ID from cache (for QR scanning - fast O(1) lookup)
+  Consumable? getConsumableByUniqueId(String uniqueId) {
+    try {
+      return _consumablesByUniqueId[uniqueId];
+    } catch (e) {
+      debugPrint('❌ Error in getConsumableByUniqueId: $e');
+      return null;
+    }
+  }
 
   /// Get consumables by category
   List<Consumable> getConsumablesByCategory(String category) {
@@ -113,6 +131,7 @@ class ConsumablesProvider with ChangeNotifier {
   void _onConsumablesUpdated(List<Consumable> consumables) {
     _consumables = consumables;
     _consumablesById = {for (var c in consumables) c.id: c};
+    _consumablesByUniqueId = {for (var c in consumables) c.uniqueId: c};
     _hasError = false;
     _isLoading = false;
     notifyListeners();
@@ -274,14 +293,9 @@ class ConsumablesProvider with ChangeNotifier {
     }
   }
 
-  /// Find consumable by unique ID
-  Future<Consumable?> findByUniqueId(String uniqueId) async {
-    try {
-      return await _consumableService.findConsumableByUniqueId(uniqueId);
-    } catch (e) {
-      _setError('Failed to find consumable: $e');
-      return null;
-    }
+  /// Find consumable by unique ID (from cache - instant lookup)
+  Consumable? findByUniqueId(String uniqueId) {
+    return _consumablesByUniqueId[uniqueId];
   }
 
   /// Search consumables by name
