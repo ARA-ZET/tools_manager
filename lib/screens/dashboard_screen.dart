@@ -49,25 +49,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: const SingleChildScrollView(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Quick Stats Section
-            _QuickStatsSection(),
+      body: Consumer<ToolsProvider>(
+        builder: (context, toolsProvider, child) {
+          // Show loading indicator while providers are initializing
+          if (toolsProvider.isLoading && !toolsProvider.isLoaded) {
+            return Container(
+              color: Colors.grey[50], // Light background
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        MallonColors.primaryGreen,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Loading dashboard...',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: MallonColors.primaryText,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Please wait',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: MallonColors.secondaryText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
 
-            SizedBox(height: 24),
+          // Show content once loaded (or if there's an error, still show the UI)
+          return const SingleChildScrollView(
+            padding: EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Quick Stats Section
+                _QuickStatsSection(),
 
-            // Recent Activity Section
-            _RecentActivitySection(),
+                SizedBox(height: 24),
 
-            SizedBox(height: 24),
+                // Recent Activity Section
+                _RecentActivitySection(),
 
-            // Quick Actions Section
-            _QuickActionsSection(),
-          ],
-        ),
+                SizedBox(height: 24),
+
+                // Quick Actions Section
+                _QuickActionsSection(),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -92,11 +131,29 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Quick Stats',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: MallonColors.primaryGreen.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.dashboard_outlined,
+                        color: MallonColors.primaryGreen,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Quick Stats',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: MallonColors.primaryText,
+                      ),
+                    ),
+                  ],
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh),
@@ -111,65 +168,87 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
             ),
             const SizedBox(height: 12),
 
-            // Stats Grid with Provider Data
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 4,
-              childAspectRatio: 1.5,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              children: [
-                // Available Tools
-                _StatCard(
-                  title: 'Available',
-                  value: toolsProvider.isLoaded
-                      ? '${toolsProvider.availableToolsCount}'
-                      : '...',
-                  icon: Icons.check_circle,
-                  color: MallonColors.available,
-                  isLoading: toolsProvider.isLoading,
-                  hasError: toolsProvider.hasError,
-                ),
+            // Stats Grid with Provider Data - Responsive
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // Calculate responsive columns based on screen width
+                int crossAxisCount;
+                double childAspectRatio;
 
-                // Checked Out Tools
-                _StatCard(
-                  title: 'Checked Out',
-                  value: toolsProvider.isLoaded
-                      ? '${toolsProvider.checkedOutToolsCount}'
-                      : '...',
-                  icon: Icons.access_time,
-                  color: MallonColors.checkedOut,
-                  isLoading: toolsProvider.isLoading,
-                  hasError: toolsProvider.hasError,
-                ),
+                if (constraints.maxWidth < 600) {
+                  // Mobile: 2 columns
+                  crossAxisCount = 2;
+                  childAspectRatio = 1.3;
+                } else if (constraints.maxWidth < 900) {
+                  // Tablet: 3 columns
+                  crossAxisCount = 3;
+                  childAspectRatio = 1.4;
+                } else {
+                  // Desktop: 4 columns
+                  crossAxisCount = 4;
+                  childAspectRatio = 1.5;
+                }
 
-                // Total Tools
-                _StatCard(
-                  title: 'Total Tools',
-                  value: toolsProvider.isLoaded
-                      ? '${toolsProvider.totalToolsCount}'
-                      : '...',
-                  icon: Icons.build,
-                  color: MallonColors.primaryGreen,
-                  isLoading: toolsProvider.isLoading,
-                  hasError: toolsProvider.hasError,
-                ),
+                return GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: crossAxisCount,
+                  childAspectRatio: childAspectRatio,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  children: [
+                    // Available Tools
+                    _StatCard(
+                      title: 'Available',
+                      value: toolsProvider.isLoaded
+                          ? '${toolsProvider.availableToolsCount}'
+                          : '...',
+                      icon: Icons.check_circle,
+                      color: MallonColors.available,
+                      isLoading: toolsProvider.isLoading,
+                      hasError: toolsProvider.hasError,
+                    ),
 
-                // Active Staff (only show if authorized)
-                _StatCard(
-                  title: 'Active Staff',
-                  value: staffProvider.isLoaded
-                      ? '${staffProvider.activeStaffCount}'
-                      : staffProvider.isUnauthorized
-                      ? 'N/A'
-                      : '...',
-                  icon: Icons.people,
-                  color: MallonColors.accentGreen,
-                  isLoading: staffProvider.isLoading,
-                  hasError: staffProvider.hasError,
-                ),
-              ],
+                    // Checked Out Tools
+                    _StatCard(
+                      title: 'Checked Out',
+                      value: toolsProvider.isLoaded
+                          ? '${toolsProvider.checkedOutToolsCount}'
+                          : '...',
+                      icon: Icons.access_time,
+                      color: MallonColors.checkedOut,
+                      isLoading: toolsProvider.isLoading,
+                      hasError: toolsProvider.hasError,
+                    ),
+
+                    // Total Tools
+                    _StatCard(
+                      title: 'Total Tools',
+                      value: toolsProvider.isLoaded
+                          ? '${toolsProvider.totalToolsCount}'
+                          : '...',
+                      icon: Icons.build,
+                      color: MallonColors.primaryGreen,
+                      isLoading: toolsProvider.isLoading,
+                      hasError: toolsProvider.hasError,
+                    ),
+
+                    // Active Staff (only show if authorized)
+                    _StatCard(
+                      title: 'Active Staff',
+                      value: staffProvider.isLoaded
+                          ? '${staffProvider.activeStaffCount}'
+                          : staffProvider.isUnauthorized
+                          ? 'N/A'
+                          : '...',
+                      icon: Icons.people,
+                      color: MallonColors.accentGreen,
+                      isLoading: staffProvider.isLoading,
+                      hasError: staffProvider.hasError,
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         );
@@ -178,7 +257,7 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
   }
 }
 
-/// Individual stat card
+/// Individual stat card with enhanced visuals
 class _StatCard extends StatelessWidget {
   final String title;
   final String value;
@@ -199,38 +278,82 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (hasError)
-              Icon(Icons.error_outline, size: 32, color: MallonColors.error)
-            else if (isLoading)
-              SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(color),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              color.withOpacity(0.1),
+              color.withOpacity(0.05),
+            ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Icon with circular background
+              if (hasError)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: MallonColors.error.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.error_outline,
+                    size: 32,
+                    color: MallonColors.error,
+                  ),
+                )
+              else if (isLoading)
+                SizedBox(
+                  width: 56,
+                  height: 56,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, size: 32, color: color),
                 ),
-              )
-            else
-              Icon(icon, size: 32, color: color),
-            const SizedBox(height: 8),
-            Text(
-              hasError ? 'Error' : value,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: hasError ? MallonColors.error : color,
+              const SizedBox(height: 12),
+              // Value
+              Text(
+                hasError ? 'Error' : value,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: hasError ? MallonColors.error : color,
+                ),
               ),
-            ),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-          ],
+              const SizedBox(height: 4),
+              // Title
+              Text(
+                title,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: MallonColors.secondaryText,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -256,11 +379,29 @@ class _RecentActivitySectionState extends State<_RecentActivitySection> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Recent Activity',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: MallonColors.accentGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.history,
+                    color: MallonColors.accentGreen,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Recent Activity',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: MallonColors.primaryText,
+                  ),
+                ),
+              ],
             ),
             TextButton(
               onPressed: () {
@@ -346,6 +487,10 @@ class _RecentActivitySectionState extends State<_RecentActivitySection> {
             final hasMoreActivities = allHistory.length > 5;
 
             return Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Column(
                 children: [
                   ...displayHistory.map((activity) {
@@ -399,7 +544,7 @@ class _RecentActivitySectionState extends State<_RecentActivitySection> {
   }
 }
 
-/// Individual activity tile with readable names
+/// Individual activity tile with readable names and enhanced visuals
 class _ReadableActivityTile extends StatelessWidget {
   final Map<String, dynamic> activity;
 
@@ -445,37 +590,141 @@ class _ReadableActivityTile extends StatelessWidget {
       }
     }
 
-    return ListTile(
-      leading: Icon(icon, color: color),
-      title: Text(
-        'Tool ${isCheckout ? 'checked out' : 'checked in'}',
-        style: const TextStyle(fontWeight: FontWeight.w500),
-      ),
-      subtitle: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [Text('Tool: $toolName'), Text('Staff: $staffName')],
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.grey.shade200,
+            width: 1,
           ),
-          Column(
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 8,
+        ),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 24),
+        ),
+        title: Text(
+          'Tool ${isCheckout ? 'checked out' : 'checked in'}',
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              if (notes != null && notes.toString().isNotEmpty) Text('$notes'),
-              Text(
-                formattedTime,
-                style: TextStyle(color: MallonColors.mediumGrey, fontSize: 12),
+              Row(
+                children: [
+                  Icon(
+                    Icons.build_outlined,
+                    size: 14,
+                    color: MallonColors.secondaryText,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      toolName,
+                      style: TextStyle(
+                        color: MallonColors.primaryText,
+                        fontSize: 13,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(
+                    Icons.person_outline,
+                    size: 14,
+                    color: MallonColors.secondaryText,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      staffName,
+                      style: TextStyle(
+                        color: MallonColors.secondaryText,
+                        fontSize: 13,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              if (notes != null && notes.toString().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.note_outlined,
+                      size: 14,
+                      color: MallonColors.secondaryText,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        notes.toString(),
+                        style: TextStyle(
+                          color: MallonColors.secondaryText,
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
-        ],
-      ),
-      trailing: Icon(
-        isCheckout ? Icons.arrow_forward : Icons.arrow_back,
-        color: color,
-        size: 16,
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                isCheckout ? Icons.arrow_forward : Icons.arrow_back,
+                color: color,
+                size: 16,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              formattedTime,
+              style: TextStyle(
+                color: MallonColors.mediumGrey,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -490,59 +739,99 @@ class _QuickActionsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Quick Actions',
-          style: Theme.of(
-            context,
-          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: MallonColors.primaryGreen.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.touch_app,
+                color: MallonColors.primaryGreen,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Quick Actions',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: MallonColors.primaryText,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
 
-        // Action Buttons
-        GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 4,
-          childAspectRatio: 2.5,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          children: [
-            _ActionButton(
-              title: 'Scan Tool',
-              icon: Icons.qr_code_scanner,
-              onPressed: () {
-                // TODO: Navigate to scan screen
-              },
-            ),
-            _ActionButton(
-              title: 'View Tools',
-              icon: Icons.build,
-              onPressed: () {
-                // TODO: Navigate to tools screen
-              },
-            ),
-            _ActionButton(
-              title: 'Manage Staff',
-              icon: Icons.people,
-              onPressed: () {
-                // TODO: Navigate to staff screen
-              },
-            ),
-            _ActionButton(
-              title: 'Settings',
-              icon: Icons.settings,
-              onPressed: () {
-                // TODO: Navigate to settings screen
-              },
-            ),
-          ],
+        // Action Buttons - Responsive
+        LayoutBuilder(
+          builder: (context, constraints) {
+            // Calculate responsive columns based on screen width
+            int crossAxisCount;
+            double childAspectRatio;
+
+            if (constraints.maxWidth < 600) {
+              // Mobile: 2 columns
+              crossAxisCount = 2;
+              childAspectRatio = 2.0;
+            } else if (constraints.maxWidth < 900) {
+              // Tablet: 3 columns
+              crossAxisCount = 3;
+              childAspectRatio = 2.3;
+            } else {
+              // Desktop: 4 columns
+              crossAxisCount = 4;
+              childAspectRatio = 2.5;
+            }
+
+            return GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: crossAxisCount,
+              childAspectRatio: childAspectRatio,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              children: [
+                _ActionButton(
+                  title: 'Scan Tool',
+                  icon: Icons.qr_code_scanner,
+                  onPressed: () {
+                    // TODO: Navigate to scan screen
+                  },
+                ),
+                _ActionButton(
+                  title: 'View Tools',
+                  icon: Icons.build,
+                  onPressed: () {
+                    // TODO: Navigate to tools screen
+                  },
+                ),
+                _ActionButton(
+                  title: 'Manage Staff',
+                  icon: Icons.people,
+                  onPressed: () {
+                    // TODO: Navigate to staff screen
+                  },
+                ),
+                _ActionButton(
+                  title: 'Settings',
+                  icon: Icons.settings,
+                  onPressed: () {
+                    // TODO: Navigate to settings screen
+                  },
+                ),
+              ],
+            );
+          },
         ),
       ],
     );
   }
 }
 
-/// Action button widget
+/// Action button widget with enhanced visuals
 class _ActionButton extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -557,24 +846,55 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 24, color: MallonColors.primaryGreen),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                textAlign: TextAlign.center,
-              ),
-            ],
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                MallonColors.primaryGreen.withOpacity(0.05),
+                MallonColors.accentGreen.withOpacity(0.05),
+              ],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: MallonColors.primaryGreen.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 28,
+                    color: MallonColors.primaryGreen,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: MallonColors.primaryText,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ),
       ),

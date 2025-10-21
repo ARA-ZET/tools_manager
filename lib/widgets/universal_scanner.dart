@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 import '../core/theme/mallon_theme.dart';
-import '../services/camera_service.dart';
 import '../models/tool.dart';
 import '../models/consumable.dart';
 import '../providers/tools_provider.dart';
@@ -68,8 +67,9 @@ class UniversalScanner extends StatefulWidget {
 
 class _UniversalScannerState extends State<UniversalScanner>
     with WidgetsBindingObserver {
-  final CameraService _cameraService = CameraService();
+  late final MobileScannerController _controller;
   final TextEditingController _manualController = TextEditingController();
+  late final String _uniqueHeroTag; // Unique heroTag for this instance
 
   bool _isInitializing = true;
   bool _hasPermission = false;
@@ -79,7 +79,9 @@ class _UniversalScannerState extends State<UniversalScanner>
   // Debouncing for scanner
   String? _lastScannedCode;
   DateTime? _lastScanTime;
-  static const Duration _scanDebounce = Duration(milliseconds: 500); // Reduced from 2 seconds
+  static const Duration _scanDebounce = Duration(
+    milliseconds: 500,
+  ); // Reduced from 2 seconds
 
   // Visual feedback state
   bool _showScanFeedback = false;
@@ -89,6 +91,12 @@ class _UniversalScannerState extends State<UniversalScanner>
   @override
   void initState() {
     super.initState();
+    _uniqueHeroTag = 'torch_${hashCode}'; // Create unique heroTag per instance
+    _controller = MobileScannerController(
+      formats: [BarcodeFormat.qrCode],
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      facing: CameraFacing.back,
+    );
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
   }
@@ -96,7 +104,7 @@ class _UniversalScannerState extends State<UniversalScanner>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _cameraService.dispose();
+    _controller.dispose();
     _manualController.dispose();
     super.dispose();
   }
@@ -105,11 +113,11 @@ class _UniversalScannerState extends State<UniversalScanner>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        _cameraService.startScanning();
+        _controller.start();
         break;
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        _cameraService.stopScanning();
+        _controller.stop();
         break;
       default:
         break;
@@ -125,14 +133,11 @@ class _UniversalScannerState extends State<UniversalScanner>
     }
 
     try {
-      final success = await _cameraService.initialize();
+      await _controller.start();
       if (mounted) {
         setState(() {
-          _hasPermission = success;
+          _hasPermission = true;
           _isInitializing = false;
-          if (!success) {
-            _errorMessage = 'Camera permission denied';
-          }
         });
       }
     } catch (e) {
@@ -148,7 +153,7 @@ class _UniversalScannerState extends State<UniversalScanner>
 
   Future<void> _toggleTorch() async {
     try {
-      await _cameraService.toggleTorch();
+      await _controller.toggleTorch();
       setState(() {
         _torchEnabled = !_torchEnabled;
       });
@@ -181,22 +186,58 @@ class _UniversalScannerState extends State<UniversalScanner>
     final result = _parseScannedCode(scannedCode);
 
     if (result == null) {
-      _showError('Invalid QR code: $scannedCode');
+      // Show invalid scan feedback in overlay (not snackbar)
+      setState(() {
+        _showScanFeedback = true;
+        _feedbackMessage = 'Invalid QR code: $scannedCode';
+        _feedbackColor = Colors.red;
+      });
+
+      // Hide feedback after delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() => _showScanFeedback = false);
+        }
+      });
       return;
     }
 
     // Check if item type is allowed
     if (result.type == ScannedItemType.tool && !widget.allowTools) {
-      _showError('Tool scanning is not enabled');
+      // Show error feedback in overlay
+      setState(() {
+        _showScanFeedback = true;
+        _feedbackMessage = 'Tool scanning not enabled';
+        _feedbackColor = Colors.orange;
+      });
+
+      // Hide feedback after delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() => _showScanFeedback = false);
+        }
+      });
       return;
     }
 
     if (result.type == ScannedItemType.consumable && !widget.allowConsumables) {
-      _showError('Consumable scanning is not enabled');
+      // Show error feedback in overlay
+      setState(() {
+        _showScanFeedback = true;
+        _feedbackMessage = 'Consumable scanning not enabled';
+        _feedbackColor = Colors.orange;
+      });
+
+      // Hide feedback after delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() => _showScanFeedback = false);
+        }
+      });
       return;
     }
 
-    // Show visual feedback
+    // Show visual feedback for valid scan
     setState(() {
       _showScanFeedback = true;
       _feedbackMessage = 'Scanned: ${result.displayName}';
@@ -347,7 +388,7 @@ class _UniversalScannerState extends State<UniversalScanner>
     return Stack(
       children: [
         MobileScanner(
-          controller: _cameraService.controller,
+          controller: _controller,
           onDetect: (capture) {
             final barcodes = capture.barcodes;
             for (final barcode in barcodes) {
@@ -367,6 +408,7 @@ class _UniversalScannerState extends State<UniversalScanner>
           batchMode: widget.batchMode,
         ),
         _CameraControlButtons(
+          heroTag: _uniqueHeroTag,
           torchEnabled: _torchEnabled,
           onToggleTorch: _toggleTorch,
         ),
@@ -555,10 +597,12 @@ class _ScanInstructions extends StatelessWidget {
 
 /// Camera control buttons widget
 class _CameraControlButtons extends StatelessWidget {
+  final String heroTag;
   final bool torchEnabled;
   final VoidCallback onToggleTorch;
 
   const _CameraControlButtons({
+    required this.heroTag,
     required this.torchEnabled,
     required this.onToggleTorch,
   });
@@ -571,7 +615,7 @@ class _CameraControlButtons extends StatelessWidget {
       child: Column(
         children: [
           FloatingActionButton(
-            heroTag: 'torch',
+            heroTag: heroTag,
             mini: true,
             onPressed: onToggleTorch,
             backgroundColor: torchEnabled

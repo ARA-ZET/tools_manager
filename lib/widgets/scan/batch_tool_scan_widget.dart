@@ -191,9 +191,11 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       await showDialog(
         context: context,
         barrierColor: Colors.black54,
+        barrierDismissible: true,
         builder: (context) => ToolNotFoundDialog(toolId: toolId),
       );
       _isDialogShowing = false;
+      _clearScanFeedback(); // Clear processing state after dialog closes
       return;
     }
 
@@ -206,9 +208,11 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       await showDialog(
         context: context,
         barrierColor: Colors.black54,
+        barrierDismissible: true,
         builder: (context) => ToolAlreadyInBatchDialog(toolId: toolId),
       );
       _isDialogShowing = false;
+      _clearScanFeedback(); // Clear processing state after dialog closes
       return;
     }
 
@@ -227,6 +231,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
 
       await showDialog(
         context: context,
+        barrierDismissible: true,
         builder: (context) => AlertDialog(
           title: Row(
             children: [
@@ -275,6 +280,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
         ),
       );
       _isDialogShowing = false;
+      _clearScanFeedback(); // Clear processing state after dialog closes
       return;
     }
 
@@ -284,9 +290,11 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black54,
+      barrierDismissible: true,
       builder: (context) => AddToBatchConfirmationDialog(tool: tool),
     );
     _isDialogShowing = false;
+    _clearScanFeedback(); // Clear processing state after dialog closes
 
     // If user confirmed, add to batch
     if (confirmed == true && mounted) {
@@ -300,6 +308,9 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
 
       scanProvider.addToBatch(tool.uniqueId);
       // Success feedback shown in camera overlay
+    } else {
+      // User cancelled or dismissed - ready for next scan
+      debugPrint('✅ Dialog dismissed - ready for next scan');
     }
   }
 

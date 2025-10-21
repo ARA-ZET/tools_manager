@@ -127,7 +127,7 @@ class _AddConsumableScreenState extends State<AddConsumableScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _selectedCategory,
+              initialValue: _selectedCategory,
               decoration: const InputDecoration(
                 labelText: 'Category *',
                 border: OutlineInputBorder(),
@@ -191,7 +191,7 @@ class _AddConsumableScreenState extends State<AddConsumableScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<MeasurementUnit>(
-              value: _selectedUnit,
+              initialValue: _selectedUnit,
               decoration: const InputDecoration(
                 labelText: 'Measurement Unit *',
                 border: OutlineInputBorder(),
