@@ -48,7 +48,10 @@ class _ConsumableDetailScreenState extends State<ConsumableDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(currentConsumable.name, style: const TextStyle(fontSize: 16)),
+        title: Text(
+          currentConsumable.name,
+          style: const TextStyle(fontSize: 16),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.qr_code, size: 20),
@@ -102,7 +105,11 @@ class _ConsumableDetailScreenState extends State<ConsumableDetailScreen> {
               SizedBox(height: isMobile ? 8 : 12),
               // Quick action card
               if (authProvider.canAuthorizeCheckouts)
-                _buildQuantityUpdateCard(currentConsumable, authProvider, isMobile),
+                _buildQuantityUpdateCard(
+                  currentConsumable,
+                  authProvider,
+                  isMobile,
+                ),
               SizedBox(height: isMobile ? 8 : 12),
               // Recent transactions (limited to 5)
               _buildCompactTransactionHistory(currentConsumable, isMobile),
@@ -250,11 +257,7 @@ class _ConsumableDetailScreenState extends State<ConsumableDetailScreen> {
                     isMobile,
                   ),
                 ),
-                Container(
-                  width: 1,
-                  height: 30,
-                  color: Colors.grey[300],
-                ),
+                Container(width: 1, height: 30, color: Colors.grey[300]),
                 Expanded(
                   child: _buildQuickInfoItem(
                     Icons.access_time,
@@ -527,10 +530,15 @@ class _ConsumableDetailScreenState extends State<ConsumableDetailScreen> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: recentTransactions.length,
-                  separatorBuilder: (context, index) => Divider(height: isMobile ? 8 : 12),
+                  separatorBuilder: (context, index) =>
+                      Divider(height: isMobile ? 8 : 12),
                   itemBuilder: (context, index) {
                     final transaction = recentTransactions[index];
-                    return _buildCompactTransactionItem(transaction, consumable, isMobile);
+                    return _buildCompactTransactionItem(
+                      transaction,
+                      consumable,
+                      isMobile,
+                    );
                   },
                 );
               },
@@ -600,7 +608,9 @@ class _ConsumableDetailScreenState extends State<ConsumableDetailScreen> {
                   children: [
                     Flexible(
                       child: Text(
-                        DateFormat('MMM d, HH:mm').format(transaction.timestamp),
+                        DateFormat(
+                          'MMM d, HH:mm',
+                        ).format(transaction.timestamp),
                         style: TextStyle(
                           fontSize: isMobile ? 11 : 12,
                           color: Colors.grey[600],
@@ -693,7 +703,10 @@ class _ConsumableDetailScreenState extends State<ConsumableDetailScreen> {
                       separatorBuilder: (context, index) => const Divider(),
                       itemBuilder: (context, index) {
                         final transaction = transactions[index];
-                        return _buildFullTransactionItem(transaction, consumable);
+                        return _buildFullTransactionItem(
+                          transaction,
+                          consumable,
+                        );
                       },
                     );
                   },
