@@ -39,6 +39,7 @@ class _RecordConsumableUsageScreenState
   @override
   void initState() {
     super.initState();
+    debugPrint('🔄 RecordConsumableUsageScreen: initState called');
     _loadCurrentStaff();
     _loadAllStaff();
   }
@@ -51,6 +52,8 @@ class _RecordConsumableUsageScreenState
   }
 
   Future<void> _loadCurrentStaff() async {
+    if (!mounted) return;
+    
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -59,7 +62,8 @@ class _RecordConsumableUsageScreenState
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final staff = await _staffService.getStaffByAuthUid(user.uid);
+        final staff = await _staffService.getStaffByAuthUid(user.uid)
+            .timeout(const Duration(seconds: 10));
         if (mounted) {
           setState(() {
             _currentStaff = staff;
@@ -67,12 +71,15 @@ class _RecordConsumableUsageScreenState
           });
         }
       } else {
-        setState(() {
-          _errorMessage = 'User not authenticated';
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'User not authenticated';
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
+      debugPrint('❌ Error loading current staff: $e');
       if (mounted) {
         setState(() {
           _errorMessage = 'Failed to load user: $e';
@@ -84,8 +91,10 @@ class _RecordConsumableUsageScreenState
 
   Future<void> _loadAllStaff() async {
     try {
-      // Get first event from the stream
-      final staff = await _staffService.getActiveStaffStream().first;
+      // Get first event from the stream with timeout
+      final staff = await _staffService.getActiveStaffStream()
+          .first
+          .timeout(const Duration(seconds: 10));
       if (mounted) {
         setState(() {
           _allStaff = staff;
@@ -93,6 +102,11 @@ class _RecordConsumableUsageScreenState
       }
     } catch (e) {
       debugPrint('Failed to load staff: $e');
+      if (mounted) {
+        setState(() {
+          _allStaff = [];
+        });
+      }
     }
   }
 
@@ -183,11 +197,25 @@ class _RecordConsumableUsageScreenState
         backgroundColor: MallonColors.primaryGreen,
         foregroundColor: Colors.white,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-          ? _buildErrorView()
-          : _buildContent(),
+      body: SafeArea(
+        child: _isLoading
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Loading...',
+                      style: TextStyle(color: MallonColors.secondaryText),
+                    ),
+                  ],
+                ),
+              )
+            : _errorMessage != null
+                ? _buildErrorView()
+                : _buildContent(),
+      ),
     );
   }
 
@@ -371,68 +399,79 @@ class _RecordConsumableUsageScreenState
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: DropdownButtonFormField<Staff>(
-              value: _selectedRecipient,
-              decoration: const InputDecoration(
-                labelText: 'Select recipient',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person_add),
-              ),
-              items: _allStaff.map((staff) {
-                return DropdownMenuItem<Staff>(
-                  value: staff,
+        _allStaff.isEmpty
+            ? Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundColor: MallonColors.primaryGreen.withOpacity(
-                          0.2,
-                        ),
-                        child: Text(
-                          staff.fullName.substring(0, 1).toUpperCase(),
-                          style: TextStyle(
-                            color: MallonColors.primaryGreen,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
+                      const CircularProgressIndicator(),
+                      const SizedBox(width: 16),
+                      const Text('Loading staff...'),
+                    ],
+                  ),
+                ),
+              )
+            : Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: DropdownButtonFormField<Staff>(
+                    value: _selectedRecipient,
+                    decoration: const InputDecoration(
+                      labelText: 'Select recipient',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person_add),
+                    ),
+                    items: _allStaff.map((staff) {
+                      return DropdownMenuItem<Staff>(
+                        value: staff,
+                        child: Row(
                           children: [
-                            Text(
-                              staff.fullName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor: MallonColors.primaryGreen.withOpacity(
+                                0.2,
+                              ),
+                              child: Text(
+                                staff.fullName.substring(0, 1).toUpperCase(),
+                                style: TextStyle(
+                                  color: MallonColors.primaryGreen,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                            Text(
-                              staff.jobCode,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  staff.fullName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  staff.jobCode,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ),
-                    ],
+                      );
+                    }).toList(),
+                    onChanged: (Staff? newValue) {
+                      setState(() {
+                        _selectedRecipient = newValue;
+                      });
+                    },
                   ),
-                );
-              }).toList(),
-              onChanged: (Staff? newValue) {
-                setState(() {
-                  _selectedRecipient = newValue;
-                });
-              },
-            ),
-          ),
-        ),
+                ),
+              ),
       ],
     );
   }

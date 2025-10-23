@@ -7,6 +7,7 @@ import '../../models/consumable.dart';
 import '../../providers/tools_provider.dart';
 import '../../providers/scan_provider.dart';
 import '../../providers/staff_provider.dart';
+import '../../providers/consumables_provider.dart';
 import '../universal_scanner.dart';
 import 'tool_scan_dialogs.dart';
 import 'tool_transaction_handler.dart';
@@ -86,14 +87,14 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
     } else if (scannedItem.type == ScannedItemType.consumable) {
       final consumable = scannedItem.item as Consumable;
 
-      // Update UI feedback instead of snackbar
+      // Update UI feedback
       _updateScanFeedback(
         scannedItem.id,
         'Consumable: ${consumable.name}',
-        false,
+        true,
       );
 
-      // For consumables in batch mode, set flag to prevent repeated scans
+      // For consumables in batch mode, show quantity dialog
       _isDialogShowing = true;
 
       if (!mounted) {
@@ -103,11 +104,56 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       }
 
       debugPrint(
-        '🔍 Batch mode - showing consumable info for ${consumable.name}',
+        '🔍 Batch mode - showing quantity dialog for ${consumable.name}',
       );
 
-      // Show feedback for 3 seconds, then allow "View" action
-      await Future.delayed(const Duration(seconds: 2));
+      final scanProvider = context.read<ScanProvider>();
+      
+      // Set batch type to consumable_usage if not set (default for consumables)
+      if (!scanProvider.isBatchTypeSet) {
+        scanProvider.setBatchType(BatchType.consumable_usage);
+      }
+
+      // Check if batch type is consumable-related
+      if (scanProvider.isConsumableBatch) {
+        // Show quantity dialog
+        final quantity = await _showConsumableQuantityDialog(consumable);
+        
+        if (quantity != null && quantity > 0) {
+          // Add to batch with quantity
+          scanProvider.addConsumableToBatch(
+            consumable.uniqueId,
+            quantity: quantity,
+          );
+          
+          // Show success feedback
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '✓ ${consumable.name} ($quantity ${consumable.unit.name}) added to batch',
+                ),
+                backgroundColor: MallonColors.primaryGreen,
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          }
+        } else {
+          // User cancelled or entered 0
+          debugPrint('❌ User cancelled quantity dialog or entered 0');
+        }
+      } else {
+        // Wrong batch type
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Cannot mix consumables with ${scanProvider.batchType == BatchType.checkout ? "checkout" : "checkin"} batch'),
+              backgroundColor: MallonColors.error,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
 
       if (!mounted) {
         _isDialogShowing = false;
@@ -119,7 +165,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       _clearScanFeedback();
       _isDialogShowing = false;
 
-      debugPrint('✅ Batch mode - ready for new scan after consumable display');
+      debugPrint('✅ Batch mode - ready for new scan after consumable processed');
     } else {
       // Unknown item type - show in UI
       _updateScanFeedback(scannedItem.id, 'Unknown', false);
@@ -345,11 +391,117 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
     _batchSearchController.clear();
   }
 
-  /// Remove tool from batch
-  void _removeBatchTool(String toolId) {
+  /// Remove tool or consumable from batch
+  void _removeBatchTool(String itemId) {
     final scanProvider = context.read<ScanProvider>();
-    scanProvider.removeFromBatch(toolId);
+    // Try to remove as tool first
+    if (scanProvider.scannedTools.contains(itemId)) {
+      scanProvider.removeFromBatch(itemId);
+    } else {
+      // Remove as consumable
+      scanProvider.removeConsumableFromBatch(itemId);
+    }
     // Removal feedback shown in batch list UI
+  }
+
+  /// Show dialog to enter quantity for consumable
+  Future<double?> _showConsumableQuantityDialog(Consumable consumable) async {
+    final TextEditingController quantityController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    
+    return showDialog<double>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.inventory_2, color: MallonColors.primaryGreen),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Enter Quantity',
+                style: TextStyle(fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                consumable.name,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Available: ${consumable.currentQuantity} ${consumable.unit.name}',
+                style: TextStyle(
+                  color: consumable.currentQuantity <= consumable.minQuantity
+                      ? MallonColors.error
+                      : MallonColors.secondaryText,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: quantityController,
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Quantity to assign',
+                  suffixText: consumable.unit.name,
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.numbers),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a quantity';
+                  }
+                  final quantity = double.tryParse(value);
+                  if (quantity == null || quantity <= 0) {
+                    return 'Please enter a valid number greater than 0';
+                  }
+                  if (quantity > consumable.currentQuantity) {
+                    return 'Not enough stock (${consumable.currentQuantity} available)';
+                  }
+                  return null;
+                },
+                onFieldSubmitted: (value) {
+                  if (formKey.currentState?.validate() ?? false) {
+                    Navigator.of(context).pop(double.tryParse(value));
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() ?? false) {
+                final quantity = double.tryParse(quantityController.text);
+                Navigator.of(context).pop(quantity);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MallonColors.primaryGreen,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Add to Batch'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Show batch submit dialog with checkout/checkin options
@@ -776,6 +928,9 @@ class _BatchToolsListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ScanProvider>(
       builder: (context, scanProvider, child) {
+        final totalCount = scanProvider.scannedTools.length + 
+                          scanProvider.scannedConsumables.length;
+        
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Card(
@@ -789,7 +944,7 @@ class _BatchToolsListCard extends StatelessWidget {
                       Icon(Icons.list_alt, color: MallonColors.primaryGreen),
                       const SizedBox(width: 8),
                       Text(
-                        'Scanned Tools',
+                        'Scanned Items',
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.bold),
                       ),
@@ -804,7 +959,7 @@ class _BatchToolsListCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          '${scanProvider.scannedTools.length}',
+                          '$totalCount',
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -814,10 +969,15 @@ class _BatchToolsListCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                _BatchToolsList(
-                  scannedTools: scanProvider.scannedTools,
-                  onRemoveTool: onRemoveTool,
-                ),
+                if (scanProvider.scannedTools.isNotEmpty || 
+                    scanProvider.scannedConsumables.isNotEmpty)
+                  _BatchItemsList(
+                    scannedTools: scanProvider.scannedTools,
+                    scannedConsumableIds: scanProvider.scannedConsumableIds,
+                    onRemoveItem: onRemoveTool,
+                  )
+                else
+                  const _EmptyBatchList(),
               ],
             ),
           ),
@@ -827,34 +987,45 @@ class _BatchToolsListCard extends StatelessWidget {
   }
 }
 
-/// Batch tools list content widget
-class _BatchToolsList extends StatelessWidget {
+/// Batch items list content widget (tools + consumables)
+class _BatchItemsList extends StatelessWidget {
   final List<String> scannedTools;
-  final Function(String) onRemoveTool;
+  final List<String> scannedConsumableIds;
+  final Function(String) onRemoveItem;
 
-  const _BatchToolsList({
+  const _BatchItemsList({
     required this.scannedTools,
-    required this.onRemoveTool,
+    required this.scannedConsumableIds,
+    required this.onRemoveItem,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (scannedTools.isEmpty) {
-      return const _EmptyBatchList();
-    }
-
+    final totalCount = scannedTools.length + scannedConsumableIds.length;
+    
     return Container(
       constraints: const BoxConstraints(maxHeight: 300),
       child: ListView.builder(
         shrinkWrap: true,
-        itemCount: scannedTools.length,
+        itemCount: totalCount,
         itemBuilder: (context, index) {
-          final toolId = scannedTools[index];
-          return _BatchToolTile(
-            toolId: toolId,
-            index: index,
-            onRemove: () => onRemoveTool(toolId),
-          );
+          // Show tools first, then consumables
+          if (index < scannedTools.length) {
+            final toolId = scannedTools[index];
+            return _BatchToolTile(
+              toolId: toolId,
+              index: index,
+              onRemove: () => onRemoveItem(toolId),
+            );
+          } else {
+            final consumableIndex = index - scannedTools.length;
+            final consumableId = scannedConsumableIds[consumableIndex];
+            return _BatchConsumableTile(
+              consumableId: consumableId,
+              index: index,
+              onRemove: () => onRemoveItem(consumableId),
+            );
+          }
         },
       ),
     );
@@ -874,12 +1045,12 @@ class _EmptyBatchList extends StatelessWidget {
           Icon(Icons.qr_code_scanner, size: 48, color: MallonColors.mediumGrey),
           const SizedBox(height: 8),
           Text(
-            'No tools scanned yet',
+            'No items scanned yet',
             style: TextStyle(color: MallonColors.mediumGrey, fontSize: 16),
           ),
           const SizedBox(height: 4),
           Text(
-            'Start scanning QR codes to add tools to your batch',
+            'Start scanning QR codes to add tools and consumables to your batch',
             style: TextStyle(color: MallonColors.secondaryText, fontSize: 12),
             textAlign: TextAlign.center,
           ),
@@ -1009,6 +1180,114 @@ class _BatchToolTile extends StatelessWidget {
               tooltip: 'Remove from batch',
             ),
             isThreeLine: tool != null,
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Individual batch consumable tile widget
+class _BatchConsumableTile extends StatelessWidget {
+  final String consumableId;
+  final int index;
+  final VoidCallback onRemove;
+
+  const _BatchConsumableTile({
+    required this.consumableId,
+    required this.index,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer2<ConsumablesProvider, ScanProvider>(
+      builder: (context, consumablesProvider, scanProvider, child) {
+        final consumable = consumablesProvider.getConsumableByUniqueId(consumableId);
+        final quantity = scanProvider.getConsumableQuantity(consumableId) ?? 0;
+
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          color: MallonColors.lightGreen.withValues(alpha: 0.3),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: MallonColors.primaryGreen,
+              child: Icon(
+                Icons.inventory_2,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    consumable?.name ?? consumableId,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: MallonColors.primaryGreen.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'CONSUMABLE',
+                    style: TextStyle(
+                      color: MallonColors.primaryGreen,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('ID: $consumableId'),
+                if (consumable != null) ...[
+                  Text('Category: ${consumable.category}'),
+                  Row(
+                    children: [
+                      Text('Assigning: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        '$quantity ${consumable.unit.name}',
+                        style: TextStyle(
+                          color: MallonColors.primaryGreen,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Text('Available: '),
+                      Text(
+                        '${consumable.currentQuantity} ${consumable.unit.name}',
+                        style: TextStyle(
+                          color: consumable.currentQuantity <= consumable.minQuantity
+                              ? MallonColors.error
+                              : MallonColors.secondaryText,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+            trailing: IconButton(
+              icon: Icon(Icons.remove_circle, color: MallonColors.error),
+              onPressed: onRemove,
+              tooltip: 'Remove from batch',
+            ),
+            isThreeLine: consumable != null,
           ),
         );
       },

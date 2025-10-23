@@ -10,13 +10,13 @@ enum ScanMode { single, batch }
 
 enum ScanState { idle, processing, debounced }
 
-enum BatchType { checkout, checkin }
+enum BatchType { checkout, checkin, consumable_usage, consumable_restock }
 
 enum BatchScanResult {
-  success, // Tool added to batch successfully
-  alreadyInBatch, // Tool already exists in batch
+  success, // Item added to batch successfully
+  alreadyInBatch, // Item already exists in batch
   debounced, // Duplicate scan ignored
-  toolNotFound, // Tool doesn't exist in database
+  itemNotFound, // Item doesn't exist in database
 }
 
 class ScanProvider extends ChangeNotifier {
@@ -31,6 +31,7 @@ class ScanProvider extends ChangeNotifier {
   ScanState _scanState = ScanState.idle;
   BatchType? _batchType; // null = not set yet, determined by first scan
   final List<String> _scannedTools = [];
+  final Map<String, double> _scannedConsumables = {}; // consumableId -> quantity
   String _searchQuery = '';
   String _selectedFilter = 'all';
   Staff? _currentStaff;
@@ -46,6 +47,8 @@ class ScanProvider extends ChangeNotifier {
   ScanState get scanState => _scanState;
   BatchType? get batchType => _batchType;
   List<String> get scannedTools => List.unmodifiable(_scannedTools);
+  Map<String, double> get scannedConsumables => Map.unmodifiable(_scannedConsumables);
+  List<String> get scannedConsumableIds => _scannedConsumables.keys.toList();
   String get searchQuery => _searchQuery;
   String get selectedFilter => _selectedFilter;
   Staff? get currentStaff => _currentStaff;
@@ -53,9 +56,11 @@ class ScanProvider extends ChangeNotifier {
   bool get isProcessing => _scanState == ScanState.processing;
   bool get isDebounced => _scanState == ScanState.debounced;
   bool get isBatchMode => _scanMode == ScanMode.batch;
-  bool get hasBatchItems => _scannedTools.isNotEmpty;
-  int get batchCount => _scannedTools.length;
+  bool get hasBatchItems => _scannedTools.isNotEmpty || _scannedConsumables.isNotEmpty;
+  int get batchCount => _scannedTools.length + _scannedConsumables.length;
   bool get isBatchTypeSet => _batchType != null;
+  bool get isConsumableBatch => _batchType == BatchType.consumable_usage || 
+                                 _batchType == BatchType.consumable_restock;
 
   // Initialize scan provider
   void initialize() {
@@ -208,6 +213,32 @@ class ScanProvider extends ChangeNotifier {
     _addToBatch(toolId);
   }
 
+  // Add consumable to batch with quantity
+  bool addConsumableToBatch(String consumableId, {required double quantity}) {
+    if (quantity <= 0) {
+      debugPrint('⚠️ Invalid quantity $quantity for consumable $consumableId');
+      return false;
+    }
+    
+    if (!_scannedConsumables.containsKey(consumableId)) {
+      _scannedConsumables[consumableId] = quantity;
+      debugPrint('✅ Added consumable $consumableId with quantity $quantity to batch (${_scannedConsumables.length} consumables)');
+      notifyListeners();
+      return true;
+    } else {
+      // Update quantity if already in batch
+      _scannedConsumables[consumableId] = quantity;
+      debugPrint('✅ Updated consumable $consumableId quantity to $quantity');
+      notifyListeners();
+      return true;
+    }
+  }
+  
+  // Get quantity for a consumable in batch
+  double? getConsumableQuantity(String consumableId) {
+    return _scannedConsumables[consumableId];
+  }
+
   // Set batch type based on first tool scanned
   void setBatchType(BatchType type) {
     if (_batchType == null) {
@@ -241,9 +272,16 @@ class ScanProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Remove consumable from batch
+  void removeConsumableFromBatch(String consumableId) {
+    _scannedConsumables.remove(consumableId);
+    notifyListeners();
+  }
+
   // Clear batch
   void clearBatch() {
     _scannedTools.clear();
+    _scannedConsumables.clear();
     _batchType = null; // Reset batch type when clearing
     notifyListeners();
   }
