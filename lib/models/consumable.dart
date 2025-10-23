@@ -7,13 +7,10 @@ class Consumable {
   final String uniqueId;
   final String name;
   final String category;
-  final String brand;
   final MeasurementUnit unit;
   final double currentQuantity;
   final double minQuantity;
   final double maxQuantity;
-  final double unitPrice;
-  final String? sku;
   final List<String> images;
   final String qrPayload;
   final String? notes;
@@ -27,13 +24,10 @@ class Consumable {
     required this.uniqueId,
     required this.name,
     required this.category,
-    required this.brand,
     required this.unit,
     required this.currentQuantity,
     required this.minQuantity,
     required this.maxQuantity,
-    required this.unitPrice,
-    this.sku,
     this.images = const [],
     required this.qrPayload,
     this.notes,
@@ -52,15 +46,12 @@ class Consumable {
       uniqueId: data['uniqueId'] as String? ?? '',
       name: data['name'] as String? ?? 'Unknown Consumable',
       category: data['category'] as String? ?? 'Uncategorized',
-      brand: data['brand'] as String? ?? '',
       unit: MeasurementUnitHelper.fromString(
         data['unit'] as String? ?? 'pieces',
       ),
       currentQuantity: (data['currentQuantity'] as num?)?.toDouble() ?? 0.0,
       minQuantity: (data['minQuantity'] as num?)?.toDouble() ?? 0.0,
       maxQuantity: (data['maxQuantity'] as num?)?.toDouble() ?? 100.0,
-      unitPrice: (data['unitPrice'] as num?)?.toDouble() ?? 0.0,
-      sku: data['sku'] as String?,
       images: (data['images'] as List<dynamic>?)?.cast<String>() ?? [],
       qrPayload: data['qrPayload'] as String? ?? '',
       notes: data['notes'] as String?,
@@ -77,13 +68,10 @@ class Consumable {
       'uniqueId': uniqueId,
       'name': name,
       'category': category,
-      'brand': brand,
       'unit': unit.name,
       'currentQuantity': currentQuantity,
       'minQuantity': minQuantity,
       'maxQuantity': maxQuantity,
-      'unitPrice': unitPrice,
-      'sku': sku,
       'images': images,
       'qrPayload': qrPayload,
       'notes': notes,
@@ -100,13 +88,10 @@ class Consumable {
     String? uniqueId,
     String? name,
     String? category,
-    String? brand,
     MeasurementUnit? unit,
     double? currentQuantity,
     double? minQuantity,
     double? maxQuantity,
-    double? unitPrice,
-    String? sku,
     List<String>? images,
     String? qrPayload,
     String? notes,
@@ -120,13 +105,10 @@ class Consumable {
       uniqueId: uniqueId ?? this.uniqueId,
       name: name ?? this.name,
       category: category ?? this.category,
-      brand: brand ?? this.brand,
       unit: unit ?? this.unit,
       currentQuantity: currentQuantity ?? this.currentQuantity,
       minQuantity: minQuantity ?? this.minQuantity,
       maxQuantity: maxQuantity ?? this.maxQuantity,
-      unitPrice: unitPrice ?? this.unitPrice,
-      sku: sku ?? this.sku,
       images: images ?? this.images,
       qrPayload: qrPayload ?? this.qrPayload,
       notes: notes ?? this.notes,
@@ -164,9 +146,6 @@ class Consumable {
   String get formattedCurrentQuantity {
     return MeasurementUnitHelper.formatQuantity(currentQuantity, unit);
   }
-
-  /// Get total inventory value
-  double get totalValue => currentQuantity * unitPrice;
 
   /// Get Firestore document reference
   DocumentReference get reference {

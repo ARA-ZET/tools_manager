@@ -188,9 +188,9 @@ class ConsumableQRCodeScreen extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
-                    // Brand
+                    // Category
                     Text(
-                      consumable.brand,
+                      consumable.category,
                       style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                       textAlign: TextAlign.center,
                     ),

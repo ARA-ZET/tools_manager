@@ -15,12 +15,9 @@ class AddConsumableScreen extends StatefulWidget {
 class _AddConsumableScreenState extends State<AddConsumableScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _brandController = TextEditingController();
-  final _skuController = TextEditingController();
   final _initialQuantityController = TextEditingController(text: '0');
   final _minQuantityController = TextEditingController(text: '10');
   final _maxQuantityController = TextEditingController(text: '100');
-  final _unitPriceController = TextEditingController(text: '0');
   final _notesController = TextEditingController();
 
   String _selectedCategory = 'Wood Glue';
@@ -52,12 +49,9 @@ class _AddConsumableScreenState extends State<AddConsumableScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _brandController.dispose();
-    _skuController.dispose();
     _initialQuantityController.dispose();
     _minQuantityController.dispose();
     _maxQuantityController.dispose();
-    _unitPriceController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -84,8 +78,6 @@ class _AddConsumableScreenState extends State<AddConsumableScreen> {
               _buildBasicInfoSection(),
               const SizedBox(height: 24),
               _buildQuantitySection(),
-              const SizedBox(height: 24),
-              _buildPricingSection(),
               const SizedBox(height: 24),
               _buildAdditionalInfoSection(),
               const SizedBox(height: 32),
@@ -144,33 +136,6 @@ class _AddConsumableScreenState extends State<AddConsumableScreen> {
                   });
                 }
               },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _brandController,
-              decoration: const InputDecoration(
-                labelText: 'Brand *',
-                hintText: 'e.g., Titebond, 3M, Bosch',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.business),
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Brand is required';
-                }
-                return null;
-              },
-              textCapitalization: TextCapitalization.words,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _skuController,
-              decoration: const InputDecoration(
-                labelText: 'SKU / Product Code',
-                hintText: 'Optional',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.qr_code_2),
-              ),
             ),
           ],
         ),
@@ -329,83 +294,6 @@ class _AddConsumableScreenState extends State<AddConsumableScreen> {
     );
   }
 
-  Widget _buildPricingSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Pricing',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _unitPriceController,
-              decoration: InputDecoration(
-                labelText: 'Unit Price *',
-                hintText: '0.00',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.attach_money),
-                prefixText: 'R ',
-                suffixText: 'per ${_selectedUnit.abbreviation}',
-              ),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Unit price is required';
-                }
-                final price = double.tryParse(value);
-                if (price == null || price < 0) {
-                  return 'Enter a valid price';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 8),
-            if (_initialQuantityController.text.isNotEmpty &&
-                _unitPriceController.text.isNotEmpty)
-              Builder(
-                builder: (context) {
-                  final qty =
-                      double.tryParse(_initialQuantityController.text) ?? 0;
-                  final price = double.tryParse(_unitPriceController.text) ?? 0;
-                  final total = qty * price;
-                  return Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: MallonColors.primaryGreen.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Initial Inventory Value:',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          'R${total.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: MallonColors.primaryGreen,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildAdditionalInfoSection() {
     return Card(
       child: Padding(
@@ -469,18 +357,13 @@ class _AddConsumableScreenState extends State<AddConsumableScreen> {
 
     final consumablesProvider = context.read<ConsumablesProvider>();
 
-    final id = await consumablesProvider.createConsumable(
+    final id = await consumablesProvider.addConsumable(
       name: _nameController.text.trim(),
       category: _selectedCategory,
-      brand: _brandController.text.trim(),
       unit: _selectedUnit.name,
       initialQuantity: double.parse(_initialQuantityController.text),
       minQuantity: double.parse(_minQuantityController.text),
       maxQuantity: double.parse(_maxQuantityController.text),
-      unitPrice: double.parse(_unitPriceController.text),
-      sku: _skuController.text.trim().isEmpty
-          ? null
-          : _skuController.text.trim(),
       notes: _notesController.text.trim().isEmpty
           ? null
           : _notesController.text.trim(),

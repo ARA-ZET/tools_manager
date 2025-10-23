@@ -5,6 +5,7 @@ import '../core/theme/mallon_theme.dart';
 import '../models/staff.dart';
 import '../providers/staff_provider.dart';
 import '../services/staff_service.dart';
+import '../services/user_approval_service.dart';
 
 /// Staff management screen
 class StaffScreen extends StatefulWidget {
@@ -14,16 +15,26 @@ class StaffScreen extends StatefulWidget {
   State<StaffScreen> createState() => _StaffScreenState();
 }
 
-class _StaffScreenState extends State<StaffScreen> {
+class _StaffScreenState extends State<StaffScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   final StaffService _staffService =
       StaffService(); // Still needed for write operations
+  final UserApprovalService _approvalService = UserApprovalService();
+  late TabController _tabController;
   String _selectedFilter = 'all';
   String _searchQuery = '';
 
   @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -31,7 +42,51 @@ class _StaffScreenState extends State<StaffScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Staff'),
+        title: const Text('Staff Management'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            const Tab(text: 'Staff'),
+            Tab(
+              child: StreamBuilder<int>(
+                stream: _approvalService.getPendingUsers().map(
+                  (users) =>
+                      users.where((u) => u['status'] == 'pending').length,
+                ),
+                builder: (context, snapshot) {
+                  final count = snapshot.data ?? 0;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Pending Approvals'),
+                      if (count > 0) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: MallonColors.primaryGreen,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            count.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -47,77 +102,156 @@ class _StaffScreenState extends State<StaffScreen> {
               );
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () {
-              _showFilterDialog();
-            },
-          ),
         ],
       ),
-      body: Column(
-        children: [
-          // Search Bar
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextFormField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                hintText: 'Search staff...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
-            ),
-          ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [_buildStaffTab(), _buildPendingApprovalsTab()],
+      ),
+      floatingActionButton: _tabController.index == 0
+          ? FloatingActionButton(
+              onPressed: () => _showAddEditStaffDialog(),
+              child: const Icon(Icons.person_add),
+            )
+          : null,
+    );
+  }
 
-          // Filter Chips
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
+  Widget _buildStaffTab() {
+    return Column(
+      children: [
+        // Search Bar
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: TextFormField(
+            controller: _searchController,
+            decoration: const InputDecoration(
+              hintText: 'Search staff...',
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (value) {
+              setState(() {
+                _searchQuery = value;
+              });
+            },
+          ),
+        ),
+
+        // Filter Chips
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              _FilterChip(
+                label: 'All',
+                isSelected: _selectedFilter == 'all',
+                onTap: () => _updateFilter('all'),
+              ),
+              const SizedBox(width: 8),
+              _FilterChip(
+                label: 'Admin',
+                isSelected: _selectedFilter == 'admin',
+                onTap: () => _updateFilter('admin'),
+              ),
+              const SizedBox(width: 8),
+              _FilterChip(
+                label: 'Supervisor',
+                isSelected: _selectedFilter == 'supervisor',
+                onTap: () => _updateFilter('supervisor'),
+              ),
+              const SizedBox(width: 8),
+              _FilterChip(
+                label: 'Worker',
+                isSelected: _selectedFilter == 'worker',
+                onTap: () => _updateFilter('worker'),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Staff List
+        Expanded(child: _buildStaffList()),
+      ],
+    );
+  }
+
+  Widget _buildPendingApprovalsTab() {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _approvalService.getPendingUsers(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _FilterChip(
-                  label: 'All',
-                  isSelected: _selectedFilter == 'all',
-                  onTap: () => _updateFilter('all'),
+                Icon(Icons.error_outline, size: 64, color: MallonColors.error),
+                const SizedBox(height: 16),
+                Text(
+                  'Error loading pending users',
+                  style: Theme.of(context).textTheme.headlineSmall,
                 ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Admin',
-                  isSelected: _selectedFilter == 'admin',
-                  onTap: () => _updateFilter('admin'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Supervisor',
-                  isSelected: _selectedFilter == 'supervisor',
-                  onTap: () => _updateFilter('supervisor'),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Worker',
-                  isSelected: _selectedFilter == 'worker',
-                  onTap: () => _updateFilter('worker'),
+                const SizedBox(height: 8),
+                Text(
+                  snapshot.error.toString(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: MallonColors.secondaryText),
                 ),
               ],
             ),
-          ),
+          );
+        }
 
-          const SizedBox(height: 16),
+        final pendingUsers = snapshot.data ?? [];
+        final activePending = pendingUsers
+            .where((user) => user['status'] == 'pending')
+            .toList();
 
-          // Staff List
-          Expanded(child: _buildStaffList()),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddEditStaffDialog(),
-        child: const Icon(Icons.person_add),
-      ),
+        if (activePending.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.check_circle_outline,
+                  size: 64,
+                  color: MallonColors.mediumGrey,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No pending approvals',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'All registration requests have been processed',
+                  style: TextStyle(color: MallonColors.secondaryText),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: activePending.length,
+          itemBuilder: (context, index) {
+            final user = activePending[index];
+            return _PendingUserCard(
+              user: user,
+              onApprove: () => _showApprovalDialog(user),
+              onReject: () => _handleReject(user),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -315,71 +449,254 @@ class _StaffScreenState extends State<StaffScreen> {
     setState(() {
       _selectedFilter = filter;
     });
-    // TODO: Apply filter to data
   }
 
-  void _showFilterDialog() {
+  /// Show approval dialog with job code and role assignment
+  void _showApprovalDialog(Map<String, dynamic> pendingUser) {
+    final formKey = GlobalKey<FormState>();
+    final jobCodeController = TextEditingController();
+    StaffRole selectedRole = StaffRole.worker;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Filter Staff'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('All Staff'),
-              leading: Radio<String>(
-                value: 'all',
-                groupValue: _selectedFilter,
-                onChanged: (value) {
-                  _updateFilter(value!);
-                  Navigator.pop(context);
-                },
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(
+            'Approve ${pendingUser['displayName'] ?? pendingUser['email']}',
+          ),
+          content: SizedBox(
+            width: MediaQuery.of(context).size.width * 0.8,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // User info
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: MallonColors.lightGreen.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: MallonColors.primaryGreen.withOpacity(0.5),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Email: ${pendingUser['email']}',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        if (pendingUser['displayName'] != null)
+                          Text(
+                            'Name: ${pendingUser['displayName']}',
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        Text(
+                          'Requested: ${_formatDate(pendingUser['createdAt'])}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: MallonColors.secondaryText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Job Code field
+                  TextFormField(
+                    controller: jobCodeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Job Code*',
+                      helperText: '3-10 alphanumeric characters',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.badge),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Job code is required';
+                      }
+                      if (!RegExp(
+                        r'^[A-Za-z0-9]{3,10}$',
+                      ).hasMatch(value.trim())) {
+                        return 'Must be 3-10 alphanumeric characters';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Role dropdown
+                  DropdownButtonFormField<StaffRole>(
+                    value: selectedRole,
+                    decoration: const InputDecoration(
+                      labelText: 'Assign Role*',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.security),
+                    ),
+                    items: StaffRole.values.map((role) {
+                      return DropdownMenuItem(
+                        value: role,
+                        child: Text(role.name.toUpperCase()),
+                      );
+                    }).toList(),
+                    onChanged: (role) {
+                      if (role != null) {
+                        setState(() {
+                          selectedRole = role;
+                        });
+                      }
+                    },
+                  ),
+                ],
               ),
             ),
-            ListTile(
-              title: const Text('Admin'),
-              leading: Radio<String>(
-                value: 'admin',
-                groupValue: _selectedFilter,
-                onChanged: (value) {
-                  _updateFilter(value!);
-                  Navigator.pop(context);
-                },
-              ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
             ),
-            ListTile(
-              title: const Text('Supervisor'),
-              leading: Radio<String>(
-                value: 'supervisor',
-                groupValue: _selectedFilter,
-                onChanged: (value) {
-                  _updateFilter(value!);
+            ElevatedButton.icon(
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
                   Navigator.pop(context);
-                },
-              ),
-            ),
-            ListTile(
-              title: const Text('Worker'),
-              leading: Radio<String>(
-                value: 'worker',
-                groupValue: _selectedFilter,
-                onChanged: (value) {
-                  _updateFilter(value!);
-                  Navigator.pop(context);
-                },
+                  await _handleApprove(
+                    pendingUser,
+                    jobCodeController.text.trim().toUpperCase(),
+                    selectedRole,
+                  );
+                }
+              },
+              icon: const Icon(Icons.check),
+              label: const Text('Approve'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: MallonColors.primaryGreen,
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Handle user approval
+  Future<void> _handleApprove(
+    Map<String, dynamic> pendingUser,
+    String jobCode,
+    StaffRole role,
+  ) async {
+    try {
+      await _approvalService.approveUser(
+        uid: pendingUser['uid'],
+        email: pendingUser['email'],
+        displayName: pendingUser['displayName'],
+        jobCode: jobCode,
+        role: role,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${pendingUser['displayName'] ?? pendingUser['email']} approved successfully',
+            ),
+            backgroundColor: MallonColors.successGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error approving user: $e'),
+            backgroundColor: MallonColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Handle user rejection
+  Future<void> _handleReject(Map<String, dynamic> pendingUser) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reject Registration'),
+        content: Text(
+          'Are you sure you want to reject the registration request from ${pendingUser['displayName'] ?? pendingUser['email']}?\n\nThis action cannot be undone.',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: MallonColors.error,
+            ),
+            child: const Text('Reject'),
           ),
         ],
       ),
     );
+
+    if (confirmed == true) {
+      try {
+        await _approvalService.rejectUser(
+          pendingUser['uid'],
+          reason: 'Rejected by admin',
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${pendingUser['displayName'] ?? pendingUser['email']} rejected',
+              ),
+              backgroundColor: MallonColors.warning,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error rejecting user: $e'),
+              backgroundColor: MallonColors.error,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  /// Format Firestore timestamp for display
+  String _formatDate(dynamic timestamp) {
+    if (timestamp == null) return 'Unknown';
+    try {
+      final date = timestamp.toDate();
+      final now = DateTime.now();
+      final diff = now.difference(date);
+
+      if (diff.inDays > 0) {
+        return '${diff.inDays} day${diff.inDays > 1 ? 's' : ''} ago';
+      } else if (diff.inHours > 0) {
+        return '${diff.inHours} hour${diff.inHours > 1 ? 's' : ''} ago';
+      } else if (diff.inMinutes > 0) {
+        return '${diff.inMinutes} minute${diff.inMinutes > 1 ? 's' : ''} ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return 'Unknown';
+    }
   }
 
   /// Show add or edit staff dialog
@@ -1151,6 +1468,152 @@ class _StaffCard extends StatelessWidget {
         return MallonColors.primaryGreen;
       default:
         return MallonColors.mediumGrey;
+    }
+  }
+}
+
+/// Pending user card widget
+class _PendingUserCard extends StatelessWidget {
+  final Map<String, dynamic> user;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+
+  const _PendingUserCard({
+    required this.user,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.orange,
+                  child: Text(
+                    _getInitials(user['displayName'] ?? user['email']),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user['displayName'] ?? 'No Name',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        user['email'],
+                        style: TextStyle(
+                          color: MallonColors.secondaryText,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatTimestamp(user['createdAt']),
+                        style: TextStyle(
+                          color: MallonColors.secondaryText,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange),
+                  ),
+                  child: const Text(
+                    'PENDING',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onReject,
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text('Reject'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: MallonColors.error,
+                    side: BorderSide(color: MallonColors.error),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  onPressed: onApprove,
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('Approve'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MallonColors.primaryGreen,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getInitials(String name) {
+    final parts = name.split(' ');
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return name.substring(0, 1).toUpperCase();
+  }
+
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return 'Unknown time';
+    try {
+      final date = timestamp.toDate();
+      final now = DateTime.now();
+      final diff = now.difference(date);
+
+      if (diff.inDays > 0) {
+        return 'Requested ${diff.inDays} day${diff.inDays > 1 ? 's' : ''} ago';
+      } else if (diff.inHours > 0) {
+        return 'Requested ${diff.inHours} hour${diff.inHours > 1 ? 's' : ''} ago';
+      } else if (diff.inMinutes > 0) {
+        return 'Requested ${diff.inMinutes} minute${diff.inMinutes > 1 ? 's' : ''} ago';
+      } else {
+        return 'Requested just now';
+      }
+    } catch (e) {
+      return 'Unknown time';
     }
   }
 }

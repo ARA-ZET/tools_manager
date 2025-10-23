@@ -70,11 +70,6 @@ class ConsumablesProvider with ChangeNotifier {
         .toList();
   }
 
-  /// Get total inventory value
-  double get totalInventoryValue {
-    return _consumables.fold(0, (sum, c) => sum + c.totalValue);
-  }
-
   /// Get count of low stock items
   int get lowStockCount => _lowStockConsumables.length;
 
@@ -154,16 +149,13 @@ class ConsumablesProvider with ChangeNotifier {
   // ============ CRUD OPERATIONS ============
 
   /// Create a new consumable
-  Future<String?> createConsumable({
+  Future<String?> addConsumable({
     required String name,
     required String category,
-    required String brand,
     required String unit,
     required double initialQuantity,
     required double minQuantity,
     required double maxQuantity,
-    required double unitPrice,
-    String? sku,
     List<String> images = const [],
     String? notes,
   }) async {
@@ -182,7 +174,6 @@ class ConsumablesProvider with ChangeNotifier {
         uniqueId: uniqueId,
         name: name,
         category: category,
-        brand: brand,
         unit: unit == 'liters'
             ? MeasurementUnit.liters
             : unit == 'meters'
@@ -195,8 +186,6 @@ class ConsumablesProvider with ChangeNotifier {
         currentQuantity: initialQuantity,
         minQuantity: minQuantity,
         maxQuantity: maxQuantity,
-        unitPrice: unitPrice,
-        sku: sku,
         images: images,
         qrPayload: qrPayload,
         notes: notes,
@@ -305,9 +294,8 @@ class ConsumablesProvider with ChangeNotifier {
     final lowerQuery = query.toLowerCase();
     return activeConsumables.where((c) {
       return c.name.toLowerCase().contains(lowerQuery) ||
-          c.brand.toLowerCase().contains(lowerQuery) ||
-          c.uniqueId.toLowerCase().contains(lowerQuery) ||
-          (c.sku?.toLowerCase().contains(lowerQuery) ?? false);
+          c.category.toLowerCase().contains(lowerQuery) ||
+          c.uniqueId.toLowerCase().contains(lowerQuery);
     }).toList();
   }
 

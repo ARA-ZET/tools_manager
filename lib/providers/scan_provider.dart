@@ -98,6 +98,8 @@ class ScanProvider extends ChangeNotifier {
       if (_scanMode == ScanMode.single) {
         clearBatch();
       }
+      // Note: Camera lifecycle is managed by CameraProvider
+      // No need to restart camera when switching modes
       notifyListeners();
     }
   }

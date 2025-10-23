@@ -62,18 +62,26 @@ class TransactionsProvider extends ChangeNotifier {
   }
 
   /// Initialize real-time listener for transactions collection (admin only)
-  /// Now uses hierarchical structure for cost-effective queries
+  /// Loads current month's transactions to support date filtering without additional queries
   void _initializeListener() {
     if (!_isAuthorized) return;
 
-    // Stream today's transactions by default
-    _transactionsSubscription = _historyService
-        .streamDailyTransactions(limit: 1000)
-        .listen(_handleTransactionsSnapshot, onError: _handleError);
+    // Load current month's transactions initially (one-time load)
+    _loadCurrentMonthTransactions();
 
     debugPrint(
-      '📊 Transactions provider initialized with hierarchical structure',
+      '📊 Transactions provider initialized - loading current month data',
     );
+  }
+
+  /// Load current month's transactions (one-time load, not real-time)
+  Future<void> _loadCurrentMonthTransactions() async {
+    try {
+      final transactions = await _historyService.getCurrentMonthTransactions();
+      _handleTransactionsSnapshot(transactions);
+    } catch (e) {
+      _handleError(e);
+    }
   }
 
   /// Handle stream updates from hierarchical structure
@@ -409,13 +417,12 @@ class TransactionsProvider extends ChangeNotifier {
     }
   }
 
-  /// Refresh data by restarting listener
-  void refresh() {
+  /// Refresh data by reloading current month's transactions
+  Future<void> refresh() async {
     if (_isAuthorized) {
-      _transactionsSubscription?.cancel();
       _loadingState = TransactionsLoadingState.loading;
       notifyListeners();
-      _initializeListener();
+      await _loadCurrentMonthTransactions();
     }
   }
 

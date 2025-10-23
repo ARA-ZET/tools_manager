@@ -7,6 +7,7 @@ import '../models/tool.dart';
 import '../models/consumable.dart';
 import '../providers/tools_provider.dart';
 import '../providers/consumables_provider.dart';
+import '../providers/camera_provider.dart';
 
 /// Scanned item type
 enum ScannedItemType { tool, consumable, unknown }
@@ -67,13 +68,11 @@ class UniversalScanner extends StatefulWidget {
 
 class _UniversalScannerState extends State<UniversalScanner>
     with WidgetsBindingObserver {
-  late final MobileScannerController _controller;
   final TextEditingController _manualController = TextEditingController();
   late final String _uniqueHeroTag; // Unique heroTag for this instance
 
   bool _isInitializing = true;
   bool _hasPermission = false;
-  bool _torchEnabled = false;
   String? _errorMessage;
 
   // Debouncing for scanner
@@ -91,12 +90,7 @@ class _UniversalScannerState extends State<UniversalScanner>
   @override
   void initState() {
     super.initState();
-    _uniqueHeroTag = 'torch_${hashCode}'; // Create unique heroTag per instance
-    _controller = MobileScannerController(
-      formats: [BarcodeFormat.qrCode],
-      detectionSpeed: DetectionSpeed.noDuplicates,
-      facing: CameraFacing.back,
-    );
+    _uniqueHeroTag = 'torch_$hashCode'; // Create unique heroTag per instance
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
   }
@@ -104,24 +98,16 @@ class _UniversalScannerState extends State<UniversalScanner>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _controller.dispose();
     _manualController.dispose();
+    // Don't dispose camera provider - it's managed globally
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.resumed:
-        _controller.start();
-        break;
-      case AppLifecycleState.paused:
-      case AppLifecycleState.detached:
-        _controller.stop();
-        break;
-      default:
-        break;
-    }
+    // Delegate to camera provider
+    final cameraProvider = context.read<CameraProvider>();
+    cameraProvider.handleAppLifecycleChange(state);
   }
 
   Future<void> _initializeCamera() async {
@@ -133,11 +119,18 @@ class _UniversalScannerState extends State<UniversalScanner>
     }
 
     try {
-      await _controller.start();
+      // Use camera provider instead of local controller
+      final cameraProvider = context.read<CameraProvider>();
+
+      // Initialize and start camera
+      await cameraProvider.initialize();
+      await cameraProvider.start();
+
       if (mounted) {
         setState(() {
-          _hasPermission = true;
+          _hasPermission = cameraProvider.isStarted;
           _isInitializing = false;
+          _errorMessage = cameraProvider.errorMessage;
         });
       }
     } catch (e) {
@@ -153,9 +146,10 @@ class _UniversalScannerState extends State<UniversalScanner>
 
   Future<void> _toggleTorch() async {
     try {
-      await _controller.toggleTorch();
+      final cameraProvider = context.read<CameraProvider>();
+      await cameraProvider.toggleTorch();
       setState(() {
-        _torchEnabled = !_torchEnabled;
+        // Torch state is managed by provider
       });
     } catch (e) {
       _showError('Failed to toggle torch: $e');
@@ -385,34 +379,43 @@ class _UniversalScannerState extends State<UniversalScanner>
       );
     }
 
-    return Stack(
-      children: [
-        MobileScanner(
-          controller: _controller,
-          onDetect: (capture) {
-            final barcodes = capture.barcodes;
-            for (final barcode in barcodes) {
-              if (barcode.rawValue != null) {
-                _handleScan(barcode.rawValue!);
-                break;
-              }
-            }
-          },
-        ),
-        _ScannerOverlay(
-          lastScannedId: widget.lastScannedId,
-          lastScannedType: widget.lastScannedType,
-          isProcessing: widget.isProcessing,
-          allowTools: widget.allowTools,
-          allowConsumables: widget.allowConsumables,
-          batchMode: widget.batchMode,
-        ),
-        _CameraControlButtons(
-          heroTag: _uniqueHeroTag,
-          torchEnabled: _torchEnabled,
-          onToggleTorch: _toggleTorch,
-        ),
-      ],
+    // Use camera provider controller
+    return Consumer<CameraProvider>(
+      builder: (context, cameraProvider, child) {
+        if (cameraProvider.controller == null) {
+          return const Center(child: Text('Camera not available'));
+        }
+
+        return Stack(
+          children: [
+            MobileScanner(
+              controller: cameraProvider.controller!,
+              onDetect: (capture) {
+                final barcodes = capture.barcodes;
+                for (final barcode in barcodes) {
+                  if (barcode.rawValue != null) {
+                    _handleScan(barcode.rawValue!);
+                    break;
+                  }
+                }
+              },
+            ),
+            _ScannerOverlay(
+              lastScannedId: widget.lastScannedId,
+              lastScannedType: widget.lastScannedType,
+              isProcessing: widget.isProcessing,
+              allowTools: widget.allowTools,
+              allowConsumables: widget.allowConsumables,
+              batchMode: widget.batchMode,
+            ),
+            _CameraControlButtons(
+              heroTag: _uniqueHeroTag,
+              torchEnabled: cameraProvider.torchEnabled,
+              onToggleTorch: _toggleTorch,
+            ),
+          ],
+        );
+      },
     );
   }
 }

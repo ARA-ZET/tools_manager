@@ -6,6 +6,7 @@ import '../models/staff.dart';
 import '../models/tool.dart';
 import '../providers/tools_provider.dart';
 import '../providers/scan_provider.dart';
+import '../providers/camera_provider.dart';
 import '../services/staff_service.dart';
 import '../widgets/scan/single_tool_scan_widget.dart';
 import '../widgets/scan/batch_tool_scan_widget.dart';
@@ -46,11 +47,16 @@ class _ScanScreenState extends State<ScanScreen> with TickerProviderStateMixin {
   }
 
   void _handleTabChange() {
-    // When switching tabs, just log for debugging
+    final cameraProvider = context.read<CameraProvider>();
+
     if (_tabController.index == 0) {
-      debugPrint('📷 Switched to Scan tab');
+      // Switched to Scan tab - resume camera
+      debugPrint('📷 Switched to Scan tab - resuming camera');
+      cameraProvider.resume();
     } else {
-      debugPrint('📋 Switched to Browse tab');
+      // Switched to Browse tab - pause camera to save resources
+      debugPrint('📋 Switched to Browse tab - pausing camera');
+      cameraProvider.pause();
     }
   }
 

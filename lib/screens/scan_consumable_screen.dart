@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../widgets/universal_scanner.dart';
 import '../providers/auth_provider.dart';
 import '../core/theme/mallon_theme.dart';
-import 'consumable_detail_screen.dart';
+import 'record_consumable_usage_screen.dart';
 import 'tool_detail_screen.dart';
 
 /// Screen for scanning consumables and tools
@@ -131,7 +131,8 @@ class _ScanConsumableScreenState extends State<ScanConsumableScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ConsumableDetailScreen(consumable: item.item),
+          builder: (context) =>
+              RecordConsumableUsageScreen(consumable: item.item),
         ),
       );
     } else if (item.type == ScannedItemType.tool && item.item != null) {

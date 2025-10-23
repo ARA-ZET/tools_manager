@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 import '../services/admin_initialization_service.dart';
+import '../services/auth_history_service.dart';
 import '../models/staff.dart';
 
 enum AuthStatus {
@@ -15,6 +16,7 @@ enum AuthStatus {
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
   final AdminInitializationService _adminService = AdminInitializationService();
+  final AuthHistoryService _authHistoryService = AuthHistoryService();
 
   AuthStatus _status = AuthStatus.uninitialized;
   User? _user;
@@ -49,26 +51,54 @@ class AuthProvider extends ChangeNotifier {
     _authService.authStateChanges.listen((User? user) async {
       if (user != null) {
         _user = user;
-        _status = AuthStatus.authenticated;
+        // Keep status as authenticating until staff data loads
+        _status = AuthStatus.authenticating;
+        notifyListeners(); // Notify that we're loading
+
         await _loadUserData();
         await _loadStaffData();
+
+        // Record login event after staff data is loaded
+        if (_staffData != null) {
+          await _authHistoryService.recordLogin(
+            user.uid,
+            metadata: {'email': user.email, 'displayName': user.displayName},
+          );
+        }
+
+        // Now set authenticated AFTER data is loaded
+        _status = AuthStatus.authenticated;
+        notifyListeners(); // Notify that we're fully authenticated
       } else {
+        // Record logout event before clearing user data
+        if (_user != null) {
+          await _authHistoryService.recordLogout(_user!.uid);
+        }
+
         _user = null;
         _userData = null;
         _staffData = null;
         _status = AuthStatus.unauthenticated;
+        notifyListeners();
       }
-      notifyListeners();
     });
   }
 
-  // Load user data from Firestore
+  // Load user data from Firestore (unified users collection)
   Future<void> _loadUserData() async {
     if (_user != null) {
       try {
         DocumentSnapshot userDoc = await _authService.getUserData(_user!.uid);
         if (userDoc.exists) {
           _userData = userDoc.data() as Map<String, dynamic>?;
+
+          // Check if user is approved in the users collection
+          if (_userData?['status'] != 'approved' ||
+              _userData?['isActive'] != true) {
+            debugPrint(
+              'User is not approved or not active: ${_userData?['status']}',
+            );
+          }
         }
       } catch (e) {
         debugPrint('Error loading user data: $e');
@@ -147,7 +177,12 @@ class AuthProvider extends ChangeNotifier {
       );
 
       if (userCredential != null && userCredential.user != null) {
-        // Registration successful - auth state listener will handle the rest
+        // Registration successful
+        // NOTE: We don't set the user state here because new users need admin approval
+        // The auth state listener is deliberately not triggered
+        // User will be signed out immediately in the register screen
+        _status = AuthStatus.unauthenticated;
+        notifyListeners();
         return true;
       } else {
         _errorMessage = 'Registration failed. Please try again.';

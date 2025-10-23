@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../core/widgets/responsive_wrapper.dart';
 import '../core/widgets/app_logo.dart';
+import '../services/user_approval_service.dart';
+import '../services/auth_history_service.dart';
+import '../models/auth_history.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -17,6 +20,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final UserApprovalService _approvalService = UserApprovalService();
+  final AuthHistoryService _authHistoryService = AuthHistoryService();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
@@ -83,15 +88,50 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (success && mounted) {
-        Navigator.of(context).pop(); // Go back to login screen
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Account created successfully! You are now signed in.',
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
+        // Create pending user entry
+        final user = authProvider.user;
+        if (user != null) {
+          try {
+            await _approvalService.createPendingUser(
+              uid: user.uid,
+              email: user.email ?? _emailController.text.trim(),
+              displayName: _displayNameController.text.trim(),
+            );
+
+            // Record account creation event
+            await _authHistoryService.recordAuthEvent(
+              uid: user.uid,
+              type: AuthEventType.accountCreated,
+              metadata: {
+                'email': user.email,
+                'displayName': _displayNameController.text.trim(),
+              },
+            );
+
+            // Sign out immediately after registration
+            await authProvider.signOut();
+
+            Navigator.of(context).pop(); // Go back to login screen
+
+            // Show pending approval message
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Account created successfully! Please wait for admin approval before signing in.',
+                ),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 6),
+              ),
+            );
+          } catch (e) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error creating approval request: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

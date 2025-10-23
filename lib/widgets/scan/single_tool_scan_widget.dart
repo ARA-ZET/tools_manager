@@ -8,7 +8,7 @@ import '../../providers/tools_provider.dart';
 import '../../providers/scan_provider.dart';
 import '../../services/secure_tool_transaction_service.dart';
 import '../universal_scanner.dart';
-import '../../screens/consumable_detail_screen.dart';
+import '../../screens/record_consumable_usage_screen.dart';
 import 'tool_scan_dialogs.dart';
 import 'tool_transaction_handler.dart';
 
@@ -109,16 +109,17 @@ class _SingleToolScanWidgetState extends State<SingleToolScanWidget> {
         return;
       }
 
-      debugPrint('🔍 Navigating to consumable detail for ${consumable.name}');
+      debugPrint('🔍 Navigating to record usage for ${consumable.name}');
 
       // Small delay to show feedback
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // Navigate to consumable detail screen
+      // Navigate to minimal usage recording screen
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ConsumableDetailScreen(consumable: consumable),
+          builder: (context) =>
+              RecordConsumableUsageScreen(consumable: consumable),
         ),
       );
 

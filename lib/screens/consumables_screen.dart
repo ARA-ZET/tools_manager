@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/consumable.dart';
+import '../models/consumable_transaction.dart';
 import '../models/measurement_unit.dart';
 import '../providers/consumables_provider.dart';
 import '../providers/auth_provider.dart';
@@ -24,6 +26,7 @@ class _ConsumablesScreenState extends State<ConsumablesScreen>
   String _searchQuery = '';
   String? _selectedCategory;
   StockLevel? _selectedStockLevel;
+  String? _expandedTransactionId;
 
   @override
   void initState() {
@@ -282,65 +285,182 @@ class _ConsumablesScreenState extends State<ConsumablesScreen>
   }
 
   Widget _buildAnalyticsTab(ConsumablesProvider provider) {
-    final totalValue = provider.totalInventoryValue;
     final totalItems = provider.activeConsumables.length;
     final lowStockCount = provider.lowStockCount;
     final outOfStockCount = provider.outOfStockCount;
+    final totalTransactions = provider.recentTransactions.length;
+    final usageTransactions = provider.recentTransactions
+        .where((t) => t.action == 'usage')
+        .length;
+    final restockTransactions = provider.recentTransactions
+        .where((t) => t.action == 'restock')
+        .length;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildAnalyticsCard(
-            'Total Inventory Value',
-            'R${totalValue.toStringAsFixed(2)}',
-            Icons.attach_money,
-            MallonColors.primaryGreen,
+          // Inventory Overview
+          const Text(
+            'Inventory Overview',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Determine number of columns based on width
+              final width = constraints.maxWidth;
+              final crossAxisCount = width > 1200
+                  ? 4
+                  : width > 800
+                  ? 3
+                  : width > 500
+                  ? 2
+                  : 2;
+              final aspectRatio = width > 1200
+                  ? 3.0
+                  : width > 800
+                  ? 2.8
+                  : width > 500
+                  ? 2.4
+                  : 2.2;
+
+              return GridView.count(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                childAspectRatio: aspectRatio,
+                children: [
+                  _buildAnalyticsCard(
+                    'Total Items',
+                    '$totalItems',
+                    Icons.inventory,
+                    Colors.blue,
+                  ),
+                  _buildAnalyticsCard(
+                    'Categories',
+                    '${provider.categories.length}',
+                    Icons.category,
+                    Colors.purple,
+                  ),
+                  _buildAnalyticsCard(
+                    'Low Stock',
+                    '$lowStockCount',
+                    Icons.warning_amber,
+                    Colors.orange,
+                  ),
+                  _buildAnalyticsCard(
+                    'Out of Stock',
+                    '$outOfStockCount',
+                    Icons.error,
+                    Colors.red,
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+
+          // Transaction Analytics
+          const Text(
+            'Transaction Activity',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Determine number of columns based on width
+              final width = constraints.maxWidth;
+              final crossAxisCount = width > 1200
+                  ? 4
+                  : width > 800
+                  ? 3
+                  : width > 500
+                  ? 2
+                  : 1;
+              final aspectRatio = width > 1200
+                  ? 3.0
+                  : width > 800
+                  ? 2.8
+                  : width > 500
+                  ? 2.4
+                  : 2.2;
+
+              return GridView.count(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                childAspectRatio: aspectRatio,
+                children: [
+                  _buildAnalyticsCard(
+                    'Total Transactions',
+                    '$totalTransactions',
+                    Icons.history,
+                    MallonColors.primaryGreen,
+                  ),
+                  _buildAnalyticsCard(
+                    'Usage Records',
+                    '$usageTransactions',
+                    Icons.remove_circle,
+                    Colors.orange,
+                  ),
+                  _buildAnalyticsCard(
+                    'Restock Records',
+                    '$restockTransactions',
+                    Icons.add_circle,
+                    Colors.green,
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+
+          // Recent Transactions
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: _buildAnalyticsCard(
-                  'Total Items',
-                  '$totalItems',
-                  Icons.inventory,
-                  Colors.blue,
-                ),
+              const Text(
+                'Recent Transactions',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildAnalyticsCard(
-                  'Categories',
-                  '${provider.categories.length}',
-                  Icons.category,
-                  Colors.purple,
+              if (provider.recentTransactions.isNotEmpty)
+                TextButton(
+                  onPressed: () => _showAllTransactions(context, provider),
+                  child: const Text('View All'),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildAnalyticsCard(
-                  'Low Stock',
-                  '$lowStockCount',
-                  Icons.warning_amber,
-                  Colors.orange,
+          if (provider.recentTransactions.isEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.history, size: 48, color: Colors.grey[400]),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No transactions yet',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildAnalyticsCard(
-                  'Out of Stock',
-                  '$outOfStockCount',
-                  Icons.error,
-                  Colors.red,
+            )
+          else
+            ...provider.recentTransactions
+                .take(5)
+                .map(
+                  (transaction) => _buildTransactionCard(transaction, provider),
                 ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -421,7 +541,7 @@ class _ConsumablesScreenState extends State<ConsumablesScreen>
                           ),
                         ),
                         Text(
-                          consumable.brand,
+                          consumable.category,
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey[600],
@@ -477,7 +597,7 @@ class _ConsumablesScreenState extends State<ConsumablesScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Value',
+                          'Min Stock',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey[600],
@@ -485,7 +605,10 @@ class _ConsumablesScreenState extends State<ConsumablesScreen>
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'R${consumable.totalValue.toStringAsFixed(2)}',
+                          consumable.formattedCurrentQuantity.replaceAll(
+                            consumable.currentQuantity.toString(),
+                            consumable.minQuantity.toString(),
+                          ),
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -519,6 +642,316 @@ class _ConsumablesScreenState extends State<ConsumablesScreen>
                     visualDensity: VisualDensity.compact,
                   ),
                 ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransactionCard(
+    ConsumableTransaction transaction,
+    ConsumablesProvider provider,
+  ) {
+    final actionType = transaction.actionType;
+    final isUsage = transaction.action == 'usage';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          key: ValueKey(
+            '${transaction.id}_${_expandedTransactionId == transaction.id}',
+          ),
+          initiallyExpanded: _expandedTransactionId == transaction.id,
+          onExpansionChanged: (isExpanded) {
+            setState(() {
+              if (isExpanded) {
+                _expandedTransactionId = transaction.id;
+              } else {
+                _expandedTransactionId = null;
+              }
+            });
+          },
+          leading: CircleAvatar(
+            backgroundColor: Color(actionType.colorValue).withOpacity(0.2),
+            child: Icon(
+              IconData(actionType.iconCodePoint, fontFamily: 'MaterialIcons'),
+              color: Color(actionType.colorValue),
+              size: 20,
+            ),
+          ),
+          title: FutureBuilder<String>(
+            future: _getConsumableName(transaction.consumableRef),
+            builder: (context, snapshot) {
+              return Text(
+                snapshot.data ?? 'Loading...',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              );
+            },
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${isUsage ? '-' : '+'}${transaction.absoluteQuantityChange.toStringAsFixed(1)} units',
+                style: TextStyle(
+                  color: Color(actionType.colorValue),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                _formatTransactionTime(transaction.timestamp),
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+          trailing: Chip(
+            label: Text(
+              actionType.displayName,
+              style: const TextStyle(fontSize: 10),
+            ),
+            backgroundColor: Color(actionType.colorValue).withOpacity(0.2),
+            labelStyle: TextStyle(
+              color: Color(actionType.colorValue),
+              fontWeight: FontWeight.bold,
+            ),
+            visualDensity: VisualDensity.compact,
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  _buildTransactionDetailRow(
+                    'Before',
+                    '${transaction.quantityBefore.toStringAsFixed(1)} units',
+                    Icons.inventory_2,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildTransactionDetailRow(
+                    'Change',
+                    '${isUsage ? '-' : '+'}${transaction.absoluteQuantityChange.toStringAsFixed(1)} units',
+                    isUsage ? Icons.remove_circle : Icons.add_circle,
+                    color: Color(actionType.colorValue),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildTransactionDetailRow(
+                    'After',
+                    '${transaction.quantityAfter.toStringAsFixed(1)} units',
+                    Icons.inventory,
+                  ),
+                  if (transaction.usedBy != null) ...[
+                    const SizedBox(height: 8),
+                    FutureBuilder<String>(
+                      future: _getStaffName(transaction.usedBy!),
+                      builder: (context, snapshot) {
+                        return _buildTransactionDetailRow(
+                          isUsage ? 'Recorded By' : 'Restocked By',
+                          snapshot.data ?? 'Loading...',
+                          Icons.person,
+                        );
+                      },
+                    ),
+                  ],
+                  if (transaction.assignedTo != null) ...[
+                    const SizedBox(height: 8),
+                    FutureBuilder<String>(
+                      future: _getStaffName(transaction.assignedTo!),
+                      builder: (context, snapshot) {
+                        return _buildTransactionDetailRow(
+                          'Given To',
+                          snapshot.data ?? 'Loading...',
+                          Icons.person_outline,
+                          color: MallonColors.primaryGreen,
+                        );
+                      },
+                    ),
+                  ],
+                  if (transaction.approvedBy != null) ...[
+                    const SizedBox(height: 8),
+                    FutureBuilder<String>(
+                      future: _getStaffName(transaction.approvedBy!),
+                      builder: (context, snapshot) {
+                        return _buildTransactionDetailRow(
+                          'Approved By',
+                          snapshot.data ?? 'Loading...',
+                          Icons.verified_user,
+                        );
+                      },
+                    ),
+                  ],
+                  if (transaction.projectName != null) ...[
+                    const SizedBox(height: 8),
+                    _buildTransactionDetailRow(
+                      'Project',
+                      transaction.projectName!,
+                      Icons.work,
+                    ),
+                  ],
+                  if (transaction.notes != null) ...[
+                    const SizedBox(height: 8),
+                    _buildTransactionDetailRow(
+                      'Notes',
+                      transaction.notes!,
+                      Icons.note,
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  _buildTransactionDetailRow(
+                    'Date & Time',
+                    _formatFullDateTime(transaction.timestamp),
+                    Icons.access_time,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransactionDetailRow(
+    String label,
+    String value,
+    IconData icon, {
+    Color? color,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color ?? Colors.grey[600]),
+        const SizedBox(width: 8),
+        Text(
+          '$label: ',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[700],
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(fontSize: 13, color: color ?? Colors.grey[800]),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<String> _getStaffName(DocumentReference ref) async {
+    try {
+      final doc = await ref.get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        return data['fullName'] as String? ??
+            data['name'] as String? ??
+            'Unknown';
+      }
+      return 'Unknown';
+    } catch (e) {
+      return 'Unknown';
+    }
+  }
+
+  String _formatFullDateTime(DateTime timestamp) {
+    return '${timestamp.day}/${timestamp.month}/${timestamp.year} at ${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<String> _getConsumableName(DocumentReference ref) async {
+    try {
+      final doc = await ref.get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        return data['name'] as String? ?? 'Unknown';
+      }
+      return 'Unknown';
+    } catch (e) {
+      return 'Unknown';
+    }
+  }
+
+  String _formatTransactionTime(DateTime timestamp) {
+    final now = DateTime.now();
+    final difference = now.difference(timestamp);
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inDays < 1) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return '${timestamp.day}/${timestamp.month}/${timestamp.year}';
+    }
+  }
+
+  void _showAllTransactions(
+    BuildContext context,
+    ConsumablesProvider provider,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.9,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'All Transactions',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: provider.recentTransactions.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.history,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No transactions found',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: scrollController,
+                        itemCount: provider.recentTransactions.length,
+                        itemBuilder: (context, index) {
+                          final transaction =
+                              provider.recentTransactions[index];
+                          return _buildTransactionCard(transaction, provider);
+                        },
+                      ),
               ),
             ],
           ),

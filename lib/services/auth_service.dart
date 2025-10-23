@@ -85,16 +85,25 @@ class AuthService {
     }
   }
 
-  // Create user document in Firestore
+  // Create user document in Firestore (called during registration)
   Future<void> _createUserDocument(User user, String displayName) async {
     final userDoc = _firestore.collection('users').doc(user.uid);
 
+    // This is called during registration - user starts as pending
     final userData = {
       'uid': user.uid,
       'email': user.email,
       'displayName': displayName,
+      'firebaseAuthUid': user.uid,
+      'hasAuthAccount': true,
+      'status': 'pending', // Will be approved by admin
+      'role': null, // Will be set when approved
+      'jobCode': null, // Will be set when approved
+      'isActive': false, // Will be true when approved
       'createdAt': FieldValue.serverTimestamp(),
       'lastSignIn': FieldValue.serverTimestamp(),
+      'approvedAt': null,
+      'rejectedAt': null,
     };
 
     await userDoc.set(userData);
@@ -109,15 +118,26 @@ class AuthService {
 
     if (docSnapshot.exists) {
       // Document exists, just update lastSignIn
-      await userDoc.update({'lastSignIn': FieldValue.serverTimestamp()});
+      await userDoc.update({
+        'lastSignIn': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     } else {
-      // Document doesn't exist, create it
+      // Document doesn't exist, create it as pending
       final userData = {
         'uid': user.uid,
         'email': user.email,
         'displayName': user.displayName ?? user.email?.split('@')[0] ?? 'User',
+        'firebaseAuthUid': user.uid,
+        'hasAuthAccount': true,
+        'status': 'pending',
+        'role': null,
+        'jobCode': null,
+        'isActive': false,
         'createdAt': FieldValue.serverTimestamp(),
         'lastSignIn': FieldValue.serverTimestamp(),
+        'approvedAt': null,
+        'rejectedAt': null,
       };
 
       await userDoc.set(userData);

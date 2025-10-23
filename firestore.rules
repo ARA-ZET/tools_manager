@@ -8,8 +8,18 @@ service cloud.firestore {
       return request.auth != null;
     }
     
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
     function getUserRole() {
-      return get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.role;
+      // Get role from users collection (primary source)
+      return getUserData().role;
+    }
+    
+    function isUserActive() {
+      // Check if user is approved and active in users collection
+      return getUserData().status == 'approved' && getUserData().isActive == true;
     }
     
     function isAdmin() {
@@ -25,16 +35,30 @@ service cloud.firestore {
     }
     
     function isActiveUser() {
-      return isAuthenticated() && get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.isActive == true;
+      return isAuthenticated() && isUserActive();
     }
     
     function isOwner(uid) {
       return isAuthenticated() && request.auth.uid == uid;
     }
 
-    // Users collection (from existing auth system)
+    // Users collection - unified user management (replaces pending_users)
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      // Admins can read all users and update their status/role
+      allow read, write: if isAdmin();
+      
+      // Users can create their own entry during registration
+      allow create: if isAuthenticated() && request.auth.uid == userId &&
+                      request.resource.data.uid == userId &&
+                      request.resource.data.status == 'pending';
+      
+      // Users can read their own record
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Users can update their lastSignIn (handled by auth service)
+      allow update: if isAuthenticated() && request.auth.uid == userId &&
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['lastSignIn', 'updatedAt']);
     }
 
     // Staff collection - stores user roles and permissions
@@ -56,6 +80,24 @@ service cloud.firestore {
       
       // Anyone authenticated can read basic staff info for assignments
       allow read: if isAuthenticated() && isActiveUser();
+      
+      // Auth history subcollection - tracks login/logout events
+      match /authHistory/{historyId} {
+        // System can always create auth history entries (login/logout tracking)
+        allow create: if isAuthenticated();
+        
+        // Admins can read all auth history
+        allow read: if isAdmin();
+        
+        // Users can read their own auth history
+        allow read: if isOwner(staffId);
+        
+        // Supervisors can read auth history for audit purposes
+        allow read: if isSupervisor();
+        
+        // Nobody can update or delete auth history entries
+        allow update, delete: if false;
+      }
     }
 
     // Tools collection - manages workshop tools
@@ -189,6 +231,13 @@ service cloud.firestore {
                         .hasOnly(['notes', 'metadata']);
       
       // Nobody can delete transaction entries except admins
+    }
+
+    // Legacy pending_users collection - deprecated, use users collection instead
+    // Keeping rules for backward compatibility during migration
+    match /pending_users/{userId} {
+      allow read, write: if isAdmin();
+      allow read: if isAuthenticated() && request.auth.uid == userId;
     }
 
     // Default rule - deny all other access

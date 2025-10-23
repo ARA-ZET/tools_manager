@@ -287,6 +287,11 @@ class ToolTransactionHandler {
           ? 'Batch checkout completed: $successCount success${failCount > 0 ? ', $failCount failed' : ''}'
           : 'Batch checkout failed: $failCount tools could not be checked out';
 
+      // Always reset processing state first
+      if (context.mounted) {
+        context.read<ScanProvider>().setProcessing(false);
+      }
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -312,7 +317,10 @@ class ToolTransactionHandler {
         }
       }
     } catch (e) {
+      // Reset processing state on error
       if (context.mounted) {
+        context.read<ScanProvider>().setProcessing(false);
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Batch checkout failed: ${e.toString()}'),
@@ -320,10 +328,6 @@ class ToolTransactionHandler {
             duration: const Duration(seconds: 4),
           ),
         );
-      }
-    } finally {
-      if (context.mounted) {
-        context.read<ScanProvider>().setProcessing(false);
       }
     }
   }
@@ -373,6 +377,11 @@ class ToolTransactionHandler {
           ? 'Batch checkin completed: $successCount success${failCount > 0 ? ', $failCount failed' : ''} (ID: $effectiveBatchId)'
           : 'Batch checkin failed: $failCount tools could not be checked in';
 
+      // Always reset processing state first
+      if (context.mounted) {
+        context.read<ScanProvider>().setProcessing(false);
+      }
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -398,7 +407,10 @@ class ToolTransactionHandler {
         }
       }
     } catch (e) {
+      // Reset processing state on error
       if (context.mounted) {
+        context.read<ScanProvider>().setProcessing(false);
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Batch checkin failed: ${e.toString()}'),
@@ -406,10 +418,6 @@ class ToolTransactionHandler {
             duration: const Duration(seconds: 4),
           ),
         );
-      }
-    } finally {
-      if (context.mounted) {
-        context.read<ScanProvider>().setProcessing(false);
       }
     }
   }

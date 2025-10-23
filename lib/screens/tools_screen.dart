@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:provider/provider.dart';
 import '../core/theme/mallon_theme.dart';
 import '../models/tool.dart';
 import '../providers/tools_provider.dart';
+import '../providers/auth_provider.dart';
 import '../services/staff_service.dart';
 import '../services/tool_service.dart';
 import 'add_tool_screen.dart';
@@ -92,14 +93,24 @@ class _ToolsScreenState extends State<ToolsScreen> {
           Expanded(child: _buildToolsList()),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AddToolScreen()),
+
+      floatingActionButton: Consumer<AuthProvider>(
+        builder: (context, authProvider, child) {
+          // Only show the FAB to admin users
+          if (!authProvider.isAdmin) {
+            return const SizedBox.shrink();
+          }
+
+          return FloatingActionButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AddToolScreen()),
+              );
+            },
+            child: const Icon(Icons.add),
           );
         },
-        child: const Icon(Icons.add),
       ),
     );
   }

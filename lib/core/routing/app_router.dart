@@ -12,7 +12,6 @@ import '../../screens/audit_screen.dart';
 import '../../screens/settings_screen.dart';
 import '../../screens/consumables_screen.dart';
 import '../widgets/responsive_wrapper.dart';
-import '../widgets/app_logo.dart';
 
 /// Navigation configuration using go_router
 class AppRouter {
@@ -111,8 +110,9 @@ class AppRouter {
   static GoRouter createRouterWithAuthProvider(AuthProvider authProvider) {
     return GoRouter(
       navigatorKey: _rootNavigatorKey,
-      initialLocation: '/dashboard',
-      debugLogDiagnostics: true,
+      initialLocation:
+          '/login', // Start at login, redirect will handle auth users
+      debugLogDiagnostics: false, // Disable verbose logging
       redirect: _handleRedirect,
       refreshListenable:
           authProvider, // This makes the router reactive to auth changes
@@ -200,6 +200,7 @@ class AppRouter {
   static String? _handleRedirect(BuildContext context, GoRouterState state) {
     final authProvider = context.read<AuthProvider>();
     final isLoggedIn = authProvider.isAuthenticated;
+    final hasStaffRecord = authProvider.staffData != null;
     final isLoading =
         authProvider.status == AuthStatus.uninitialized ||
         authProvider.status == AuthStatus.authenticating;
@@ -209,13 +210,26 @@ class AppRouter {
       return null; // Stay on current route while loading
     }
 
+    // CRITICAL: If user is logged in but staff data hasn't loaded yet,
+    // stay on current route to prevent premature navigation
+    // This prevents the flash of dashboard before approval check completes
+    if (isLoggedIn && !hasStaffRecord && state.uri.toString() == '/login') {
+      return null; // Stay on login page until staff data loads
+    }
+
     // If not logged in and not on login page, redirect to login
     if (!isLoggedIn && state.uri.toString() != '/login') {
       return '/login';
     }
 
-    // If logged in and on login page, redirect to dashboard
-    if (isLoggedIn && state.uri.toString() == '/login') {
+    // If logged in but no staff record (not approved) and not on login page, redirect to login
+    // This prevents unapproved users from accessing the app
+    if (isLoggedIn && !hasStaffRecord && state.uri.toString() != '/login') {
+      return '/login';
+    }
+
+    // If logged in with staff record and on login page, redirect to dashboard
+    if (isLoggedIn && hasStaffRecord && state.uri.toString() == '/login') {
       return '/dashboard';
     }
 
@@ -234,49 +248,65 @@ class MainShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
     final authProvider = context.watch<AuthProvider>();
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final isTablet =
+        MediaQuery.of(context).size.width >= 600 &&
+        MediaQuery.of(context).size.width < 900;
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            // Logo
-            const HeaderLogo(),
-            const SizedBox(width: 16),
-            // Title
-            Text(_getAppBarTitle(location)),
-          ],
+        title: Text(
+          _getAppBarTitle(location),
+          style: TextStyle(
+            fontSize: isMobile ? 18 : (isTablet ? 20 : 22),
+            fontWeight: FontWeight.bold,
+          ),
         ),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
         foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
         elevation: 2,
+        // Remove logo and optimize for mobile
+        centerTitle: isMobile, // Center title on mobile for better aesthetics
+        titleSpacing: isMobile ? 0 : 16, // Adjust spacing
         actions: [
-          // Settings button
-          IconButton(
-            onPressed: () => context.goNamed('settings'),
-            icon: const Icon(Icons.settings),
-            tooltip: 'Settings',
-          ),
+          // Settings button - only show icon on mobile
+          if (isMobile)
+            IconButton(
+              onPressed: () => context.goNamed('settings'),
+              icon: const Icon(Icons.settings),
+              tooltip: 'Settings',
+              iconSize: 22,
+            )
+          else
+            IconButton(
+              onPressed: () => context.goNamed('settings'),
+              icon: const Icon(Icons.settings),
+              tooltip: 'Settings',
+            ),
           // Staff button (admin only)
           if (authProvider.isAdmin)
             IconButton(
               onPressed: () => context.goNamed('staff'),
               icon: const Icon(Icons.people),
               tooltip: 'Staff Management',
+              iconSize: isMobile ? 22 : 24,
             ),
           // User avatar with initials
           Padding(
-            padding: const EdgeInsets.only(right: 8.0),
+            padding: EdgeInsets.only(right: isMobile ? 4.0 : 8.0),
             child: PopupMenuButton<String>(
               child: CircleAvatar(
+                radius: isMobile ? 16 : 18,
                 backgroundColor: _getRoleColor(
                   context,
                   authProvider.staffData?.role.value,
                 ),
                 child: Text(
                   _getUserInitials(authProvider.staffData?.fullName ?? 'U'),
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
+                    fontSize: isMobile ? 12 : 14,
                   ),
                 ),
               ),

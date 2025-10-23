@@ -14,62 +14,21 @@ class AuditScreen extends StatefulWidget {
 class _AuditScreenState extends State<AuditScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedFilter = 'all';
+  String _selectedDateFilter =
+      'custom'; // 'today', 'yesterday', 'week', 'month', 'custom'
   DateTime? _startDate;
   DateTime? _endDate;
-  List<Map<String, dynamic>> _filteredTransactions = [];
-  bool _isLoadingFiltered = false;
+  String? _expandedItemId;
 
   @override
   void initState() {
     super.initState();
-    // Load filtered data when date range or filter changes
-    _loadFilteredData();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  /// Load filtered transactions based on current filters
-  Future<void> _loadFilteredData() async {
-    if (_startDate == null && _endDate == null) {
-      // No date filter - use real-time today's data
-      setState(() {
-        _filteredTransactions = [];
-        _isLoadingFiltered = false;
-      });
-      return;
-    }
-
-    setState(() {
-      _isLoadingFiltered = true;
-    });
-
-    final transactionsProvider = context.read<TransactionsProvider>();
-
-    try {
-      final transactions = await transactionsProvider.getFilteredTransactions(
-        startDate: _startDate,
-        endDate: _endDate,
-        action: _selectedFilter == 'all' ? null : _selectedFilter,
-      );
-
-      setState(() {
-        _filteredTransactions = transactions;
-        _isLoadingFiltered = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoadingFiltered = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading transactions: $e')),
-        );
-      }
-    }
   }
 
   @override
@@ -102,17 +61,16 @@ class _AuditScreenState extends State<AuditScreen> {
         }
 
         return Scaffold(
+          backgroundColor: MallonColors.primaryGreen.withAlpha(30),
           appBar: AppBar(
             title: const Text('Audit Log'),
             actions: [
               // Refresh button
               IconButton(
                 icon: const Icon(Icons.refresh),
-                onPressed: () {
-                  if (_startDate != null || _endDate != null) {
-                    _loadFilteredData();
-                  }
-                  // Real-time data refreshes automatically
+                onPressed: () async {
+                  // Reload current month's data from database
+                  await transactionsProvider.refresh();
                 },
               ),
               IconButton(
@@ -134,107 +92,161 @@ class _AuditScreenState extends State<AuditScreen> {
               // Search and Filters
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
+                child: Row(
                   children: [
                     // Search Bar
-                    TextFormField(
-                      controller: _searchController,
-                      decoration: const InputDecoration(
-                        hintText: 'Search activity...',
-                        prefixIcon: Icon(Icons.search),
-                        border: OutlineInputBorder(),
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _searchController,
+                        decoration: const InputDecoration(
+                          hintText: 'Search activity...',
+                          prefixIcon: Icon(Icons.search),
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) {
+                          setState(() {}); // Trigger rebuild for search filter
+                        },
                       ),
-                      onChanged: (value) {
-                        setState(() {}); // Trigger rebuild for search filter
-                      },
                     ),
 
-                    const SizedBox(height: 12),
-
-                    // Date Range Display
-                    if (_startDate != null || _endDate != null)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: MallonColors.lightGreen,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: MallonColors.primaryGreen),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.date_range,
-                              size: 16,
-                              color: MallonColors.primaryGreen,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _getDateRangeText(),
-                                style: const TextStyle(
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _startDate != null || _endDate != null
+                          ? Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: MallonColors.lightGreen,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
                                   color: MallonColors.primaryGreen,
-                                  fontSize: 12,
                                 ),
                               ),
-                            ),
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _startDate = null;
-                                  _endDate = null;
-                                });
-                                _loadFilteredData();
-                              },
-                              child: Icon(
-                                Icons.close,
-                                size: 16,
-                                color: MallonColors.primaryGreen,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.date_range,
+                                    size: 16,
+                                    color: MallonColors.primaryGreen,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _getDateRangeText(),
+                                      style: const TextStyle(
+                                        color: MallonColors.primaryGreen,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _startDate = null;
+                                        _endDate = null;
+                                        _selectedDateFilter = 'custom';
+                                      });
+                                    },
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 16,
+                                      color: MallonColors.primaryGreen,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
+                            )
+                          : SizedBox.shrink(),
+                    ),
+
+                    // Date Range Display
                   ],
                 ),
               ),
 
               // Filter Chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    _FilterChip(
-                      label: 'All',
-                      isSelected: _selectedFilter == 'all',
-                      onTap: () => _updateFilter('all'),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Action Filters
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        _FilterChip(
+                          label: 'All',
+                          isSelected: _selectedFilter == 'all',
+                          onTap: () => _updateFilter('all'),
+                        ),
+                        const SizedBox(width: 8),
+                        _FilterChip(
+                          label: 'Check Out',
+                          isSelected: _selectedFilter == 'checkout',
+                          onTap: () => _updateFilter('checkout'),
+                        ),
+                        const SizedBox(width: 8),
+                        _FilterChip(
+                          label: 'Check In',
+                          isSelected: _selectedFilter == 'checkin',
+                          onTap: () => _updateFilter('checkin'),
+                        ),
+                        const SizedBox(width: 8, height: 40),
+                        _FilterChip(
+                          label: 'Batch',
+                          isSelected: _selectedFilter == 'batch',
+                          onTap: () => _updateFilter('batch'),
+                        ),
+                        Container(
+                          width: 4,
+                          height: 36,
+                          color: MallonColors.primaryGreen,
+                          margin: EdgeInsets.symmetric(horizontal: 8),
+                        ),
+
+                        _FilterChip(
+                          label: 'Today',
+                          isSelected: _selectedDateFilter == 'today',
+                          onTap: () => _applyDateQuickFilter('today'),
+                        ),
+                        const SizedBox(width: 8),
+                        _FilterChip(
+                          label: 'Yesterday',
+                          isSelected: _selectedDateFilter == 'yesterday',
+                          onTap: () => _applyDateQuickFilter('yesterday'),
+                        ),
+                        const SizedBox(width: 8),
+                        _FilterChip(
+                          label: 'This Week',
+                          isSelected: _selectedDateFilter == 'week',
+                          onTap: () => _applyDateQuickFilter('week'),
+                        ),
+                        const SizedBox(width: 8),
+                        _FilterChip(
+                          label: 'This Month',
+                          isSelected: _selectedDateFilter == 'month',
+                          onTap: () => _applyDateQuickFilter('month'),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: () => _showDatePicker(),
+                          icon: const Icon(
+                            Icons.date_range,
+                            color: MallonColors.primaryGreen,
+                            size: 28,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    _FilterChip(
-                      label: 'Check Out',
-                      isSelected: _selectedFilter == 'checkout',
-                      onTap: () => _updateFilter('checkout'),
-                    ),
-                    const SizedBox(width: 8),
-                    _FilterChip(
-                      label: 'Check In',
-                      isSelected: _selectedFilter == 'checkin',
-                      onTap: () => _updateFilter('checkin'),
-                    ),
-                    const SizedBox(width: 8),
-                    _FilterChip(
-                      label: 'Batch',
-                      isSelected: _selectedFilter == 'batch',
-                      onTap: () => _updateFilter('batch'),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
               ),
 
               const SizedBox(height: 16),
 
               // Stats Summary Card
-              if (!_isLoadingFiltered) _buildStatsCard(transactionsProvider),
+              _buildStatsCard(transactionsProvider),
 
               const SizedBox(height: 8),
 
@@ -248,12 +260,35 @@ class _AuditScreenState extends State<AuditScreen> {
   }
 
   Widget _buildStatsCard(TransactionsProvider transactionsProvider) {
-    // Determine which transactions to count
-    List<Map<String, dynamic>> transactions;
-    if (_startDate != null || _endDate != null) {
-      transactions = _filteredTransactions;
-    } else {
-      transactions = transactionsProvider.allTransactions;
+    // Start with all transactions from provider
+    List<Map<String, dynamic>> transactions =
+        transactionsProvider.allTransactions;
+
+    // Apply date filter if set
+    if (_startDate != null && _endDate != null) {
+      transactions = transactions.where((t) {
+        final timestamp = (t['timestamp'] as dynamic)?.toDate();
+        if (timestamp == null) return false;
+        return timestamp.isAfter(
+              _startDate!.subtract(const Duration(seconds: 1)),
+            ) &&
+            timestamp.isBefore(_endDate!.add(const Duration(seconds: 1)));
+      }).toList();
+    }
+
+    // Apply action filter
+    if (_selectedFilter != 'all') {
+      if (_selectedFilter == 'batch') {
+        // Filter for batch operations by checking notes field
+        transactions = transactions.where((t) {
+          final notes = t['notes'] as String?;
+          return notes != null && notes.contains('Batch operation:');
+        }).toList();
+      } else {
+        transactions = transactions
+            .where((t) => t['action'] == _selectedFilter)
+            .toList();
+      }
     }
 
     final checkouts = transactions
@@ -278,7 +313,7 @@ class _AuditScreenState extends State<AuditScreen> {
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -324,19 +359,20 @@ class _AuditScreenState extends State<AuditScreen> {
   }
 
   Widget _buildActivityList(TransactionsProvider transactionsProvider) {
-    // Show loading state
-    if (_isLoadingFiltered) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    // Start with all transactions from provider
+    List<Map<String, dynamic>> transactions =
+        transactionsProvider.allTransactions;
 
-    // Determine which transactions to show
-    List<Map<String, dynamic>> transactions;
-    if (_startDate != null || _endDate != null) {
-      // Use filtered data from date range query
-      transactions = _filteredTransactions;
-    } else {
-      // Use real-time today's data from provider
-      transactions = transactionsProvider.allTransactions;
+    // Apply date filter if set
+    if (_startDate != null && _endDate != null) {
+      transactions = transactions.where((t) {
+        final timestamp = (t['timestamp'] as dynamic)?.toDate();
+        if (timestamp == null) return false;
+        return timestamp.isAfter(
+              _startDate!.subtract(const Duration(seconds: 1)),
+            ) &&
+            timestamp.isBefore(_endDate!.add(const Duration(seconds: 1)));
+      }).toList();
     }
 
     // Apply action filter
@@ -417,12 +453,21 @@ class _AuditScreenState extends State<AuditScreen> {
 
         if (item['isBatchGroup'] == true) {
           // Show batch group
+          final batchId = item['batchId'] as String;
           return _BatchGroupItem(
-            batchId: item['batchId'] as String,
+            key: ValueKey('batch_$batchId'),
+            batchId: batchId,
             transactions: item['transactions'] as List<Map<String, dynamic>>,
             action: item['action'] as String,
             staffName: item['staffName'] as String,
+            processedBy: item['processedBy'] as String? ?? 'Unknown',
             timestamp: item['timestamp'] as DateTime,
+            isExpanded: _expandedItemId == 'batch_$batchId',
+            onExpansionChanged: (isExpanded) {
+              setState(() {
+                _expandedItemId = isExpanded ? 'batch_$batchId' : null;
+              });
+            },
           );
         } else {
           // Show individual transaction
@@ -433,8 +478,10 @@ class _AuditScreenState extends State<AuditScreen> {
           final isBatch =
               batchId != null ||
               (notes != null && notes.contains('Batch operation:'));
+          final transactionId = transaction['id'] as String? ?? 'item_$index';
 
           return _ActivityItem(
+            key: ValueKey(transactionId),
             action: transaction['action'] as String? ?? 'unknown',
             toolName: metadata?['toolName'] as String? ?? 'Unknown Tool',
             staffName: metadata?['staffName'] as String? ?? 'Unknown Staff',
@@ -446,6 +493,12 @@ class _AuditScreenState extends State<AuditScreen> {
             batchId: batchId,
             toolBrand: metadata?['toolBrand'] as String?,
             toolModel: metadata?['toolModel'] as String?,
+            isExpanded: _expandedItemId == transactionId,
+            onExpansionChanged: (isExpanded) {
+              setState(() {
+                _expandedItemId = isExpanded ? transactionId : null;
+              });
+            },
           );
         }
       },
@@ -494,15 +547,14 @@ class _AuditScreenState extends State<AuditScreen> {
       final batchTransactions = entry.value;
       if (batchTransactions.isNotEmpty) {
         final firstTransaction = batchTransactions.first;
+        final metadata = firstTransaction['metadata'] as Map<String, dynamic>?;
         result.add({
           'isBatchGroup': true,
           'batchId': entry.key,
           'transactions': batchTransactions,
           'action': firstTransaction['action'],
-          'staffName':
-              (firstTransaction['metadata']
-                  as Map<String, dynamic>?)?['staffName'] ??
-              'Unknown',
+          'staffName': metadata?['staffName'] ?? 'Unknown',
+          'processedBy': metadata?['adminName'] ?? 'Unknown',
           'timestamp':
               (firstTransaction['timestamp'] as dynamic)?.toDate() ??
               DateTime.now(),
@@ -536,6 +588,64 @@ class _AuditScreenState extends State<AuditScreen> {
       _selectedFilter = filter;
     });
     // Data filtering happens in _buildActivityList, no need to reload
+  }
+
+  /// Apply date quick filter
+  void _applyDateQuickFilter(String filter) {
+    final now = DateTime.now();
+    DateTime startDate;
+    DateTime endDate;
+
+    switch (filter) {
+      case 'today':
+        startDate = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+        break;
+      case 'yesterday':
+        final yesterday = now.subtract(const Duration(days: 1));
+        startDate = DateTime(
+          yesterday.year,
+          yesterday.month,
+          yesterday.day,
+          0,
+          0,
+          0,
+        );
+        endDate = DateTime(
+          yesterday.year,
+          yesterday.month,
+          yesterday.day,
+          23,
+          59,
+          59,
+        );
+        break;
+      case 'week':
+        // Start of week (Monday)
+        final weekStart = now.subtract(Duration(days: now.weekday - 1));
+        startDate = DateTime(
+          weekStart.year,
+          weekStart.month,
+          weekStart.day,
+          0,
+          0,
+          0,
+        );
+        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+        break;
+      case 'month':
+        startDate = DateTime(now.year, now.month, 1, 0, 0, 0);
+        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+        break;
+      default:
+        return;
+    }
+
+    setState(() {
+      _selectedDateFilter = filter;
+      _startDate = startDate;
+      _endDate = endDate;
+    });
   }
 
   void _showFilterDialog() {
@@ -614,6 +724,7 @@ class _AuditScreenState extends State<AuditScreen> {
 
     if (picked != null) {
       setState(() {
+        _selectedDateFilter = 'custom';
         // Set start date to beginning of day (00:00:00)
         _startDate = DateTime(
           picked.start.year,
@@ -633,12 +744,25 @@ class _AuditScreenState extends State<AuditScreen> {
           59,
         );
       });
-      // Load transactions for selected date range
-      _loadFilteredData();
     }
   }
 
   String _getDateRangeText() {
+    // Show quick filter name if it's not custom
+    if (_selectedDateFilter != 'custom') {
+      switch (_selectedDateFilter) {
+        case 'today':
+          return 'Today (${_startDate!.day}/${_startDate!.month}/${_startDate!.year})';
+        case 'yesterday':
+          return 'Yesterday (${_startDate!.day}/${_startDate!.month}/${_startDate!.year})';
+        case 'week':
+          return 'This Week (${_startDate!.day}/${_startDate!.month} - ${_endDate!.day}/${_endDate!.month})';
+        case 'month':
+          return 'This Month (${_startDate!.day}/${_startDate!.month} - ${_endDate!.day}/${_endDate!.month})';
+      }
+    }
+
+    // Show custom date range
     if (_startDate != null && _endDate != null) {
       return '${_startDate!.day}/${_startDate!.month}/${_startDate!.year} - ${_endDate!.day}/${_endDate!.month}/${_endDate!.year}';
     } else if (_startDate != null) {
@@ -668,14 +792,22 @@ class _FilterChip extends StatelessWidget {
       label: Text(label),
       selected: isSelected,
       onSelected: (_) => onTap(),
-      selectedColor: MallonColors.lightGreen,
+      selectedColor: MallonColors.warning.withAlpha(125),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: isSelected
+              ? MallonColors.warning
+              : MallonColors.primaryGreen.withOpacity(0.3),
+        ),
+      ),
       checkmarkColor: MallonColors.primaryGreen,
     );
   }
 }
 
 /// Activity item widget
-class _ActivityItem extends StatefulWidget {
+class _ActivityItem extends StatelessWidget {
   final String action;
   final String toolName;
   final String staffName;
@@ -685,8 +817,11 @@ class _ActivityItem extends StatefulWidget {
   final String? batchId;
   final String? toolBrand;
   final String? toolModel;
+  final bool isExpanded;
+  final ValueChanged<bool> onExpansionChanged;
 
   const _ActivityItem({
+    super.key,
     required this.action,
     required this.toolName,
     required this.staffName,
@@ -696,18 +831,13 @@ class _ActivityItem extends StatefulWidget {
     this.batchId,
     this.toolBrand,
     this.toolModel,
+    required this.isExpanded,
+    required this.onExpansionChanged,
   });
 
   @override
-  State<_ActivityItem> createState() => _ActivityItemState();
-}
-
-class _ActivityItemState extends State<_ActivityItem> {
-  bool _isExpanded = false;
-
-  @override
   Widget build(BuildContext context) {
-    final isCheckout = widget.action.toLowerCase() == 'checkout';
+    final isCheckout = action.toLowerCase() == 'checkout';
     final actionColor = isCheckout
         ? MallonColors.checkedOut
         : MallonColors.available;
@@ -734,11 +864,14 @@ class _ActivityItemState extends State<_ActivityItem> {
               children: [
                 Expanded(
                   child: Text(
-                    '${widget.action.toUpperCase()} - ${widget.toolName}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    '${action.toUpperCase()} - ${toolName}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
-                if (widget.isBatch)
+                if (isBatch)
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 6,
@@ -760,43 +893,141 @@ class _ActivityItemState extends State<_ActivityItem> {
                   ),
               ],
             ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('by ${widget.staffName}'),
-                Text(
-                  _formatTimestamp(widget.timestamp),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: MallonColors.secondaryText,
-                  ),
-                ),
-                if (widget.notes != null && !_isExpanded)
-                  Text(
-                    widget.notes!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                      color: MallonColors.secondaryText,
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Tool name section
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      spacing: 4,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.build_outlined,
+                              size: 14,
+                              color: MallonColors.secondaryText,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                toolName,
+                                style: const TextStyle(
+                                  color: MallonColors.primaryText,
+                                  fontSize: 13,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.av_timer_rounded,
+                              size: 14,
+                              color: MallonColors.secondaryText,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                _formatTimestamp(timestamp),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: MallonColors.mediumGrey,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: 12),
+                  // Staff name and notes section in Column
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Staff name section
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.person_outline,
+                              size: 14,
+                              color: MallonColors.secondaryText,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                isCheckout
+                                    ? "Assigned to: ${staffName}"
+                                    : "Returned by: ${staffName}",
+                                style: const TextStyle(
+                                  color: MallonColors.secondaryText,
+                                  fontSize: 13,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Notes section (conditional)
+                        if (notes != null &&
+                            notes!.isNotEmpty &&
+                            !isExpanded) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.note_outlined,
+                                size: 14,
+                                color: MallonColors.secondaryText,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  notes!,
+                                  style: const TextStyle(
+                                    color: MallonColors.secondaryText,
+                                    fontSize: 12,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                IconButton(
+                  icon: Icon(
+                    isExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: actionColor,
+                  ),
+                  onPressed: () => onExpansionChanged(!isExpanded),
+                ),
               ],
             ),
-            trailing: IconButton(
-              icon: Icon(
-                _isExpanded ? Icons.expand_less : Icons.expand_more,
-                color: actionColor,
-              ),
-              onPressed: () {
-                setState(() {
-                  _isExpanded = !_isExpanded;
-                });
-              },
-            ),
           ),
-          if (_isExpanded) ...[
+          if (isExpanded) ...[
             const Divider(height: 1),
             Container(
               padding: const EdgeInsets.all(16),
@@ -836,18 +1067,16 @@ class _ActivityItemState extends State<_ActivityItem> {
                         _buildDetailRow(
                           icon: Icons.build,
                           label: 'Tool',
-                          value: widget.toolName,
+                          value: toolName,
                           color: actionColor,
                         ),
-                        if (widget.toolBrand != null ||
-                            widget.toolModel != null) ...[
+                        if (toolBrand != null || toolModel != null) ...[
                           const SizedBox(height: 8),
                           _buildDetailRow(
                             icon: Icons.label,
                             label: 'Brand & Model',
-                            value:
-                                '${widget.toolBrand ?? ''} ${widget.toolModel ?? ''}'
-                                    .trim(),
+                            value: '${toolBrand ?? ''} ${toolModel ?? ''}'
+                                .trim(),
                             color: actionColor,
                           ),
                         ],
@@ -855,14 +1084,14 @@ class _ActivityItemState extends State<_ActivityItem> {
                         _buildDetailRow(
                           icon: Icons.person,
                           label: isCheckout ? 'Assigned To' : 'Returned By',
-                          value: widget.staffName,
+                          value: staffName,
                           color: actionColor,
                         ),
                         const SizedBox(height: 8),
                         _buildDetailRow(
                           icon: Icons.swap_horiz,
                           label: 'Action',
-                          value: widget.action.toUpperCase(),
+                          value: action.toUpperCase(),
                           color: actionColor,
                         ),
                         const SizedBox(height: 8),
@@ -870,25 +1099,24 @@ class _ActivityItemState extends State<_ActivityItem> {
                           icon: Icons.access_time,
                           label: 'Timestamp',
                           value:
-                              '${widget.timestamp.day}/${widget.timestamp.month}/${widget.timestamp.year} at ${widget.timestamp.hour}:${widget.timestamp.minute.toString().padLeft(2, '0')}',
+                              '${timestamp.day}/${timestamp.month}/${timestamp.year} at ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}',
                           color: actionColor,
                         ),
-                        if (widget.isBatch && widget.batchId != null) ...[
+                        if (isBatch && batchId != null) ...[
                           const SizedBox(height: 8),
                           _buildDetailRow(
                             icon: Icons.tag,
                             label: 'Batch ID',
-                            value: widget.batchId!,
+                            value: batchId!,
                             color: actionColor,
                           ),
                         ],
-                        if (widget.notes != null &&
-                            widget.notes!.isNotEmpty) ...[
+                        if (notes != null && notes!.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           _buildDetailRow(
                             icon: Icons.notes,
                             label: 'Notes',
-                            value: widget.notes!,
+                            value: notes!,
                             color: actionColor,
                           ),
                         ],
@@ -1006,32 +1234,32 @@ class _StatItem extends StatelessWidget {
 }
 
 /// Batch group item widget - shows multiple tools processed in a batch
-class _BatchGroupItem extends StatefulWidget {
+class _BatchGroupItem extends StatelessWidget {
   final String batchId;
   final List<Map<String, dynamic>> transactions;
   final String action;
   final String staffName;
+  final String processedBy;
   final DateTime timestamp;
+  final bool isExpanded;
+  final ValueChanged<bool> onExpansionChanged;
 
   const _BatchGroupItem({
+    super.key,
     required this.batchId,
     required this.transactions,
     required this.action,
     required this.staffName,
+    required this.processedBy,
     required this.timestamp,
+    required this.isExpanded,
+    required this.onExpansionChanged,
   });
 
   @override
-  State<_BatchGroupItem> createState() => _BatchGroupItemState();
-}
-
-class _BatchGroupItemState extends State<_BatchGroupItem> {
-  bool _isExpanded = false;
-
-  @override
   Widget build(BuildContext context) {
-    final isCheckout = widget.action.toLowerCase() == 'checkout';
-    final toolCount = widget.transactions.length;
+    final isCheckout = action.toLowerCase() == 'checkout';
+    final toolCount = transactions.length;
 
     // Different colors for checkout vs checkin batches
     final batchColor = isCheckout
@@ -1059,8 +1287,11 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
               children: [
                 Expanded(
                   child: Text(
-                    'BATCH ${widget.action.toUpperCase()} - $toolCount tools',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    'BATCH ${action.toUpperCase()} - $toolCount tools',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
                 Container(
@@ -1083,40 +1314,130 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
                 ),
               ],
             ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('by ${widget.staffName}'),
-                Text(
-                  _formatTimestamp(widget.timestamp),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: MallonColors.secondaryText,
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left column - Tools and Time
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      spacing: 4,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.layers,
+                              size: 14,
+                              color: MallonColors.secondaryText,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                '$toolCount tool${toolCount > 1 ? 's' : ''}',
+                                style: const TextStyle(
+                                  color: MallonColors.primaryText,
+                                  fontSize: 13,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.av_timer_rounded,
+                              size: 14,
+                              color: MallonColors.secondaryText,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                _formatTimestamp(timestamp),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: MallonColors.mediumGrey,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Text(
-                  'Batch ID: ${widget.batchId}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontStyle: FontStyle.italic,
-                    color: MallonColors.secondaryText,
+                  const SizedBox(width: 12),
+                  // Right column - Staff and Processor
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Staff member (assigned to/returned by)
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.person_outline,
+                              size: 14,
+                              color: MallonColors.secondaryText,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                isCheckout
+                                    ? "Assigned to: $staffName"
+                                    : "Returned by: $staffName",
+                                style: const TextStyle(
+                                  color: MallonColors.secondaryText,
+                                  fontSize: 13,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        // Processor (admin/supervisor)
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.admin_panel_settings,
+                              size: 14,
+                              color: MallonColors.primaryGreen,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                "Processed by: $processedBy",
+                                style: const TextStyle(
+                                  color: MallonColors.primaryGreen,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             trailing: IconButton(
               icon: Icon(
-                _isExpanded ? Icons.expand_less : Icons.expand_more,
+                isExpanded ? Icons.expand_less : Icons.expand_more,
                 color: batchColor,
               ),
-              onPressed: () {
-                setState(() {
-                  _isExpanded = !_isExpanded;
-                });
-              },
+              onPressed: () => onExpansionChanged(!isExpanded),
             ),
           ),
-          if (_isExpanded) ...[
+          if (isExpanded) ...[
             const Divider(height: 1),
             Container(
               padding: const EdgeInsets.all(16),
@@ -1156,14 +1477,14 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
                         _buildDetailRow(
                           icon: Icons.tag,
                           label: 'Batch ID',
-                          value: widget.batchId,
+                          value: batchId,
                           color: batchColor,
                         ),
                         const SizedBox(height: 8),
                         _buildDetailRow(
                           icon: Icons.layers,
                           label: 'Action',
-                          value: widget.action.toUpperCase(),
+                          value: action.toUpperCase(),
                           color: batchColor,
                         ),
                         const SizedBox(height: 8),
@@ -1171,22 +1492,29 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
                           icon: Icons.build,
                           label: 'Tools Count',
                           value:
-                              '${widget.transactions.length} tool${widget.transactions.length > 1 ? 's' : ''}',
+                              '${transactions.length} tool${transactions.length > 1 ? 's' : ''}',
                           color: batchColor,
                         ),
                         const SizedBox(height: 8),
                         _buildDetailRow(
                           icon: Icons.person,
-                          label: isCheckout ? 'Assigned To' : 'Processed By',
-                          value: widget.staffName,
+                          label: isCheckout ? 'Assigned To' : 'Returned By',
+                          value: staffName,
                           color: batchColor,
+                        ),
+                        const SizedBox(height: 8),
+                        _buildDetailRow(
+                          icon: Icons.admin_panel_settings,
+                          label: 'Processed By',
+                          value: processedBy,
+                          color: MallonColors.primaryGreen,
                         ),
                         const SizedBox(height: 8),
                         _buildDetailRow(
                           icon: Icons.access_time,
                           label: 'Timestamp',
                           value:
-                              '${widget.timestamp.day}/${widget.timestamp.month}/${widget.timestamp.year} at ${widget.timestamp.hour}:${widget.timestamp.minute.toString().padLeft(2, '0')}',
+                              '${timestamp.day}/${timestamp.month}/${timestamp.year} at ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}',
                           color: batchColor,
                         ),
                       ],
@@ -1199,7 +1527,7 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
                       Icon(Icons.build, size: 18, color: batchColor),
                       const SizedBox(width: 8),
                       Text(
-                        'Tools in This Batch (${widget.transactions.length})',
+                        'Tools in This Batch (${transactions.length})',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -1208,7 +1536,7 @@ class _BatchGroupItemState extends State<_BatchGroupItem> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  ...widget.transactions.asMap().entries.map((entry) {
+                  ...transactions.asMap().entries.map((entry) {
                     final index = entry.key;
                     final transaction = entry.value;
                     final metadata =

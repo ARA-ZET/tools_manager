@@ -10,6 +10,7 @@ class ConsumableTransaction {
   final double quantityAfter;
   final DocumentReference? usedBy;
   final DocumentReference? approvedBy;
+  final DocumentReference? assignedTo;
   final String? projectName;
   final String? notes;
   final DateTime timestamp;
@@ -24,6 +25,7 @@ class ConsumableTransaction {
     required this.quantityAfter,
     this.usedBy,
     this.approvedBy,
+    this.assignedTo,
     this.projectName,
     this.notes,
     required this.timestamp,
@@ -43,6 +45,7 @@ class ConsumableTransaction {
       quantityAfter: (data['quantityAfter'] as num?)?.toDouble() ?? 0.0,
       usedBy: data['usedBy'] as DocumentReference?,
       approvedBy: data['approvedBy'] as DocumentReference?,
+      assignedTo: data['assignedTo'] as DocumentReference?,
       projectName: data['projectName'] as String?,
       notes: data['notes'] as String?,
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -60,6 +63,7 @@ class ConsumableTransaction {
       'quantityAfter': quantityAfter,
       'usedBy': usedBy,
       'approvedBy': approvedBy,
+      'assignedTo': assignedTo,
       'projectName': projectName,
       'notes': notes,
       'timestamp': Timestamp.fromDate(timestamp),

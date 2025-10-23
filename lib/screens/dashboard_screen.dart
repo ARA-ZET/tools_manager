@@ -1,10 +1,60 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
 import '../providers/tools_provider.dart';
 import '../providers/staff_provider.dart';
 import '../providers/transactions_provider.dart';
+import '../providers/consumables_provider.dart';
+import '../models/consumable.dart';
+import '../models/measurement_unit.dart';
 import '../core/theme/mallon_theme.dart';
+
+/// Responsive utility for dashboard elements
+class ResponsiveHelper {
+  static bool isMobile(BuildContext context) =>
+      MediaQuery.of(context).size.width < 600;
+  static bool isTablet(BuildContext context) =>
+      MediaQuery.of(context).size.width >= 600 &&
+      MediaQuery.of(context).size.width < 900;
+  static bool isDesktop(BuildContext context) =>
+      MediaQuery.of(context).size.width >= 900;
+
+  /// Get responsive font size
+  static double fontSize(
+    BuildContext context, {
+    required double mobile,
+    required double tablet,
+    required double desktop,
+  }) {
+    if (isMobile(context)) return mobile;
+    if (isTablet(context)) return tablet;
+    return desktop;
+  }
+
+  /// Get responsive icon size
+  static double iconSize(
+    BuildContext context, {
+    required double mobile,
+    required double tablet,
+    required double desktop,
+  }) {
+    if (isMobile(context)) return mobile;
+    if (isTablet(context)) return tablet;
+    return desktop;
+  }
+
+  /// Get responsive padding
+  static double padding(
+    BuildContext context, {
+    required double mobile,
+    required double tablet,
+    required double desktop,
+  }) {
+    if (isMobile(context)) return mobile;
+    if (isTablet(context)) return tablet;
+    return desktop;
+  }
+}
 
 /// Dashboard screen showing overview of tool management system
 class DashboardScreen extends StatefulWidget {
@@ -18,37 +68,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboard'),
-        actions: [
-          Consumer<AuthProvider>(
-            builder: (context, authProvider, child) {
-              return IconButton(
-                icon: CircleAvatar(
-                  radius: 16,
-                  backgroundColor: MallonColors.primaryGreen,
-                  child: Text(
-                    authProvider.user?.displayName
-                            ?.substring(0, 1)
-                            .toUpperCase() ??
-                        authProvider.user?.email
-                            ?.substring(0, 1)
-                            .toUpperCase() ??
-                        'U',
-                    style: const TextStyle(
-                      color: MallonColors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                onPressed: () {
-                  // TODO: Show user menu
-                },
-              );
-            },
-          ),
-        ],
-      ),
+      backgroundColor: MallonColors.primaryGreen.withAlpha(30),
       body: Consumer<ToolsProvider>(
         builder: (context, toolsProvider, child) {
           // Show loading indicator while providers are initializing
@@ -90,19 +110,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 24,
               children: [
                 // Quick Stats Section
                 _QuickStatsSection(),
 
-                SizedBox(height: 24),
-
                 // Recent Activity Section
                 _RecentActivitySection(),
 
-                SizedBox(height: 24),
-
                 // Quick Actions Section
                 _QuickActionsSection(),
+
+                // Consumables Insights Section
+                _ConsumablesInsightsSection(),
               ],
             ),
           );
@@ -134,7 +154,14 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: EdgeInsets.all(
+                        ResponsiveHelper.padding(
+                          context,
+                          mobile: 6,
+                          tablet: 7,
+                          desktop: 8,
+                        ),
+                      ),
                       decoration: BoxDecoration(
                         color: MallonColors.primaryGreen.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
@@ -142,21 +169,41 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
                       child: Icon(
                         Icons.dashboard_outlined,
                         color: MallonColors.primaryGreen,
-                        size: 24,
+                        size: ResponsiveHelper.iconSize(
+                          context,
+                          mobile: 20,
+                          tablet: 22,
+                          desktop: 24,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+
                     Text(
                       'Quick Stats',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: MallonColors.primaryText,
-                      ),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: MallonColors.primaryText,
+                            fontSize: ResponsiveHelper.fontSize(
+                              context,
+                              mobile: 16,
+                              tablet: 18,
+                              desktop: 20,
+                            ),
+                          ),
                     ),
                   ],
                 ),
                 IconButton(
-                  icon: const Icon(Icons.refresh),
+                  icon: Icon(
+                    Icons.refresh,
+                    size: ResponsiveHelper.iconSize(
+                      context,
+                      mobile: 20,
+                      tablet: 22,
+                      desktop: 24,
+                    ),
+                  ),
                   onPressed: () {
                     // Refresh providers if there's an error
                     if (toolsProvider.hasError) toolsProvider.retry();
@@ -178,15 +225,15 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
                 if (constraints.maxWidth < 600) {
                   // Mobile: 2 columns
                   crossAxisCount = 2;
-                  childAspectRatio = 1.3;
+                  childAspectRatio = 1.2;
                 } else if (constraints.maxWidth < 900) {
                   // Tablet: 3 columns
                   crossAxisCount = 3;
-                  childAspectRatio = 1.4;
+                  childAspectRatio = 1.3;
                 } else {
                   // Desktop: 4 columns
                   crossAxisCount = 4;
-                  childAspectRatio = 1.5;
+                  childAspectRatio = 1.6;
                 }
 
                 return GridView.count(
@@ -205,6 +252,7 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
                           : '...',
                       icon: Icons.check_circle,
                       color: MallonColors.available,
+                      imagePath: 'assets/images/available.jpg',
                       isLoading: toolsProvider.isLoading,
                       hasError: toolsProvider.hasError,
                     ),
@@ -217,6 +265,7 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
                           : '...',
                       icon: Icons.access_time,
                       color: MallonColors.checkedOut,
+                      imagePath: 'assets/images/checkout.png',
                       isLoading: toolsProvider.isLoading,
                       hasError: toolsProvider.hasError,
                     ),
@@ -229,6 +278,7 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
                           : '...',
                       icon: Icons.build,
                       color: MallonColors.primaryGreen,
+                      imagePath: 'assets/images/staff.png',
                       isLoading: toolsProvider.isLoading,
                       hasError: toolsProvider.hasError,
                     ),
@@ -243,6 +293,7 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
                           : '...',
                       icon: Icons.people,
                       color: MallonColors.accentGreen,
+                      imagePath: 'assets/images/active_staff.jpg',
                       isLoading: staffProvider.isLoading,
                       hasError: staffProvider.hasError,
                     ),
@@ -257,12 +308,13 @@ class _QuickStatsSectionState extends State<_QuickStatsSection> {
   }
 }
 
-/// Individual stat card with enhanced visuals
+/// Individual stat card with enhanced visuals and custom images
 class _StatCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
   final Color color;
+  final String? imagePath;
   final bool isLoading;
   final bool hasError;
 
@@ -271,6 +323,7 @@ class _StatCard extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.color,
+    this.imagePath,
     this.isLoading = false,
     this.hasError = false,
   });
@@ -279,81 +332,219 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
       child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              color.withOpacity(0.1),
-              color.withOpacity(0.05),
-            ],
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Icon with circular background
-              if (hasError)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: MallonColors.error.withOpacity(0.2),
-                    shape: BoxShape.circle,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(16)),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Background image (if provided)
+            if (imagePath != null && !hasError && !isLoading)
+              Image.asset(
+                imagePath!,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  // Fallback to gradient if image fails
+                  return Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          color.withOpacity(0.1),
+                          color.withOpacity(0.05),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              )
+            else
+              // Gradient background fallback
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
                   ),
-                  child: Icon(
-                    Icons.error_outline,
-                    size: 32,
-                    color: MallonColors.error,
-                  ),
-                )
-              else if (isLoading)
-                SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    valueColor: AlwaysStoppedAnimation<Color>(color),
-                  ),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(icon, size: 32, color: color),
-                ),
-              const SizedBox(height: 12),
-              // Value
-              Text(
-                hasError ? 'Error' : value,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: hasError ? MallonColors.error : color,
                 ),
               ),
-              const SizedBox(height: 4),
-              // Title
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: MallonColors.secondaryText,
-                  fontWeight: FontWeight.w500,
+
+            // Dark overlay for text readability
+            if (imagePath != null && !hasError && !isLoading)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.4),
+                      Colors.black.withOpacity(0.6),
+                    ],
+                  ),
                 ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
-            ],
-          ),
+
+            // Content
+            Padding(
+              padding: EdgeInsets.all(
+                ResponsiveHelper.padding(
+                  context,
+                  mobile: 12,
+                  tablet: 14,
+                  desktop: 16,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Icon with circular background
+                  if (hasError)
+                    Container(
+                      padding: EdgeInsets.all(
+                        ResponsiveHelper.padding(
+                          context,
+                          mobile: 8,
+                          tablet: 10,
+                          desktop: 12,
+                        ),
+                      ),
+                      decoration: BoxDecoration(
+                        color: MallonColors.error.withOpacity(0.9),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.error_outline,
+                        size: ResponsiveHelper.iconSize(
+                          context,
+                          mobile: 24,
+                          tablet: 28,
+                          desktop: 32,
+                        ),
+                        color: Colors.white,
+                      ),
+                    )
+                  else if (isLoading)
+                    SizedBox(
+                      width: ResponsiveHelper.iconSize(
+                        context,
+                        mobile: 40,
+                        tablet: 48,
+                        desktop: 56,
+                      ),
+                      height: ResponsiveHelper.iconSize(
+                        context,
+                        mobile: 40,
+                        tablet: 48,
+                        desktop: 56,
+                      ),
+                      child: CircularProgressIndicator(
+                        strokeWidth: ResponsiveHelper.isMobile(context)
+                            ? 2.5
+                            : 3,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: EdgeInsets.all(
+                        ResponsiveHelper.padding(
+                          context,
+                          mobile: 4,
+                          tablet: 6,
+                          desktop: 8,
+                        ),
+                      ),
+                      decoration: BoxDecoration(
+                        color: imagePath != null
+                            ? Colors.white.withOpacity(0.9)
+                            : color.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                        boxShadow: imagePath != null
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Icon(
+                        icon,
+                        size: ResponsiveHelper.iconSize(
+                          context,
+                          mobile: 24,
+                          tablet: 28,
+                          desktop: 32,
+                        ),
+                        color: imagePath != null ? color : color,
+                      ),
+                    ),
+
+                  const Spacer(),
+
+                  // Value
+                  Text(
+                    hasError ? 'Error' : value,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: ResponsiveHelper.fontSize(
+                        context,
+                        mobile: 20,
+                        tablet: 22,
+                        desktop: 24,
+                      ),
+                      color: imagePath != null && !hasError && !isLoading
+                          ? Colors.white
+                          : (hasError ? MallonColors.error : color),
+                      shadows: imagePath != null && !hasError && !isLoading
+                          ? [
+                              Shadow(
+                                offset: const Offset(0, 2),
+                                blurRadius: 4,
+                                color: Colors.black.withOpacity(0.5),
+                              ),
+                            ]
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Title
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: imagePath != null && !hasError && !isLoading
+                          ? Colors.white.withOpacity(0.9)
+                          : MallonColors.secondaryText,
+                      fontSize: ResponsiveHelper.fontSize(
+                        context,
+                        mobile: 11,
+                        tablet: 12,
+                        desktop: 14,
+                      ),
+                      fontWeight: FontWeight.w600,
+                      shadows: imagePath != null && !hasError && !isLoading
+                          ? [
+                              Shadow(
+                                offset: const Offset(0, 1),
+                                blurRadius: 3,
+                                color: Colors.black.withOpacity(0.5),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -382,7 +573,14 @@ class _RecentActivitySectionState extends State<_RecentActivitySection> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: EdgeInsets.all(
+                    ResponsiveHelper.padding(
+                      context,
+                      mobile: 6,
+                      tablet: 7,
+                      desktop: 8,
+                    ),
+                  ),
                   decoration: BoxDecoration(
                     color: MallonColors.accentGreen.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
@@ -390,29 +588,40 @@ class _RecentActivitySectionState extends State<_RecentActivitySection> {
                   child: Icon(
                     Icons.history,
                     color: MallonColors.accentGreen,
-                    size: 24,
+                    size: ResponsiveHelper.iconSize(
+                      context,
+                      mobile: 20,
+                      tablet: 22,
+                      desktop: 24,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(
+                  width: ResponsiveHelper.padding(
+                    context,
+                    mobile: 8,
+                    tablet: 10,
+                    desktop: 12,
+                  ),
+                ),
                 Text(
                   'Recent Activity',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: MallonColors.primaryText,
+                    fontSize: ResponsiveHelper.fontSize(
+                      context,
+                      mobile: 16,
+                      tablet: 18,
+                      desktop: 20,
+                    ),
                   ),
                 ),
               ],
             ),
             TextButton(
-              onPressed: () {
-                // TODO: Navigate to audit/history screen
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Full audit screen coming soon'),
-                  ),
-                );
-              },
-              child: const Text('View All'),
+              onPressed: () => context.goNamed('audit'),
+              child: const Text('Load more...'),
             ),
           ],
         ),
@@ -593,97 +802,105 @@ class _ReadableActivityTile extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(
-            color: Colors.grey.shade200,
-            width: 1,
-          ),
+          bottom: BorderSide(color: Colors.grey.shade200, width: 1),
         ),
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 8,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: ResponsiveHelper.padding(
+            context,
+            mobile: 12,
+            tablet: 14,
+            desktop: 16,
+          ),
+          vertical: ResponsiveHelper.padding(
+            context,
+            mobile: 6,
+            tablet: 7,
+            desktop: 8,
+          ),
         ),
         leading: Container(
-          padding: const EdgeInsets.all(10),
+          padding: EdgeInsets.all(
+            ResponsiveHelper.padding(
+              context,
+              mobile: 8,
+              tablet: 9,
+              desktop: 10,
+            ),
+          ),
           decoration: BoxDecoration(
             color: color.withOpacity(0.15),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: color, size: 24),
+          child: Icon(
+            icon,
+            color: color,
+            size: ResponsiveHelper.iconSize(
+              context,
+              mobile: 20,
+              tablet: 22,
+              desktop: 24,
+            ),
+          ),
         ),
         title: Text(
           'Tool ${isCheckout ? 'checked out' : 'checked in'}',
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w600,
-            fontSize: 15,
+            fontSize: ResponsiveHelper.fontSize(
+              context,
+              mobile: 10,
+              tablet: 12,
+              desktop: 14,
+            ),
           ),
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8.0),
-          child: Column(
+          padding: EdgeInsets.only(
+            top: ResponsiveHelper.padding(
+              context,
+              mobile: 6,
+              tablet: 7,
+              desktop: 8,
+            ),
+          ),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.build_outlined,
-                    size: 14,
-                    color: MallonColors.secondaryText,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      toolName,
-                      style: TextStyle(
-                        color: MallonColors.primaryText,
-                        fontSize: 13,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(
-                    Icons.person_outline,
-                    size: 14,
-                    color: MallonColors.secondaryText,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      staffName,
-                      style: TextStyle(
-                        color: MallonColors.secondaryText,
-                        fontSize: 13,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              if (notes != null && notes.toString().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Row(
+              // Tool name section
+              Expanded(
+                child: Row(
                   children: [
                     Icon(
-                      Icons.note_outlined,
-                      size: 14,
+                      Icons.build_outlined,
+                      size: ResponsiveHelper.iconSize(
+                        context,
+                        mobile: 12,
+                        tablet: 13,
+                        desktop: 14,
+                      ),
                       color: MallonColors.secondaryText,
                     ),
-                    const SizedBox(width: 4),
+                    SizedBox(
+                      width: ResponsiveHelper.padding(
+                        context,
+                        mobile: 3,
+                        tablet: 3.5,
+                        desktop: 4,
+                      ),
+                    ),
                     Expanded(
                       child: Text(
-                        notes.toString(),
+                        toolName,
                         style: TextStyle(
-                          color: MallonColors.secondaryText,
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
+                          color: MallonColors.primaryText,
+                          fontSize: ResponsiveHelper.fontSize(
+                            context,
+                            mobile: 12,
+                            tablet: 12.5,
+                            desktop: 13,
+                          ),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -691,7 +908,114 @@ class _ReadableActivityTile extends StatelessWidget {
                     ),
                   ],
                 ),
-              ],
+              ),
+              SizedBox(
+                width: ResponsiveHelper.padding(
+                  context,
+                  mobile: 8,
+                  tablet: 10,
+                  desktop: 12,
+                ),
+              ),
+              // Staff name and notes section in Column
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Staff name section
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.person_outline,
+                          size: ResponsiveHelper.iconSize(
+                            context,
+                            mobile: 12,
+                            tablet: 13,
+                            desktop: 14,
+                          ),
+                          color: MallonColors.secondaryText,
+                        ),
+                        SizedBox(
+                          width: ResponsiveHelper.padding(
+                            context,
+                            mobile: 3,
+                            tablet: 3.5,
+                            desktop: 4,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            !isCheckout
+                                ? "Assigned to: ${staffName}"
+                                : "Checked out by: ${staffName}",
+                            style: TextStyle(
+                              color: MallonColors.secondaryText,
+                              fontSize: ResponsiveHelper.fontSize(
+                                context,
+                                mobile: 12,
+                                tablet: 12.5,
+                                desktop: 13,
+                              ),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Notes section (conditional)
+                    if (notes != null && notes.toString().isNotEmpty) ...[
+                      SizedBox(
+                        height: ResponsiveHelper.padding(
+                          context,
+                          mobile: 3,
+                          tablet: 3.5,
+                          desktop: 4,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.note_outlined,
+                            size: ResponsiveHelper.iconSize(
+                              context,
+                              mobile: 12,
+                              tablet: 13,
+                              desktop: 14,
+                            ),
+                            color: MallonColors.secondaryText,
+                          ),
+                          SizedBox(
+                            width: ResponsiveHelper.padding(
+                              context,
+                              mobile: 3,
+                              tablet: 3.5,
+                              desktop: 4,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              notes.toString(),
+                              style: TextStyle(
+                                color: MallonColors.secondaryText,
+                                fontSize: ResponsiveHelper.fontSize(
+                                  context,
+                                  mobile: 11,
+                                  tablet: 11.5,
+                                  desktop: 12,
+                                ),
+                                fontStyle: FontStyle.italic,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -700,9 +1024,19 @@ class _ReadableActivityTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 4,
+              padding: EdgeInsets.symmetric(
+                horizontal: ResponsiveHelper.padding(
+                  context,
+                  mobile: 6,
+                  tablet: 7,
+                  desktop: 8,
+                ),
+                vertical: ResponsiveHelper.padding(
+                  context,
+                  mobile: 3,
+                  tablet: 3.5,
+                  desktop: 4,
+                ),
               ),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
@@ -711,15 +1045,32 @@ class _ReadableActivityTile extends StatelessWidget {
               child: Icon(
                 isCheckout ? Icons.arrow_forward : Icons.arrow_back,
                 color: color,
-                size: 16,
+                size: ResponsiveHelper.iconSize(
+                  context,
+                  mobile: 14,
+                  tablet: 15,
+                  desktop: 16,
+                ),
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(
+              height: ResponsiveHelper.padding(
+                context,
+                mobile: 3,
+                tablet: 3.5,
+                desktop: 4,
+              ),
+            ),
             Text(
               formattedTime,
               style: TextStyle(
                 color: MallonColors.mediumGrey,
-                fontSize: 11,
+                fontSize: ResponsiveHelper.fontSize(
+                  context,
+                  mobile: 10,
+                  tablet: 10.5,
+                  desktop: 11,
+                ),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -742,7 +1093,14 @@ class _QuickActionsSection extends StatelessWidget {
         Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.all(
+                ResponsiveHelper.padding(
+                  context,
+                  mobile: 4,
+                  tablet: 5,
+                  desktop: 6,
+                ),
+              ),
               decoration: BoxDecoration(
                 color: MallonColors.primaryGreen.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
@@ -750,15 +1108,33 @@ class _QuickActionsSection extends StatelessWidget {
               child: Icon(
                 Icons.touch_app,
                 color: MallonColors.primaryGreen,
-                size: 24,
+                size: ResponsiveHelper.iconSize(
+                  context,
+                  mobile: 20,
+                  tablet: 24,
+                  desktop: 28,
+                ),
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(
+              width: ResponsiveHelper.padding(
+                context,
+                mobile: 8,
+                tablet: 10,
+                desktop: 12,
+              ),
+            ),
             Text(
               'Quick Actions',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: MallonColors.primaryText,
+                fontSize: ResponsiveHelper.fontSize(
+                  context,
+                  mobile: 16,
+                  tablet: 18,
+                  desktop: 20,
+                ),
               ),
             ),
           ],
@@ -775,8 +1151,12 @@ class _QuickActionsSection extends StatelessWidget {
             if (constraints.maxWidth < 600) {
               // Mobile: 2 columns
               crossAxisCount = 2;
-              childAspectRatio = 2.0;
+              childAspectRatio = 1.2;
             } else if (constraints.maxWidth < 900) {
+              // Tablet: 3 columns
+              crossAxisCount = 3;
+              childAspectRatio = 2.3;
+            } else if (constraints.maxWidth < 1200) {
               // Tablet: 3 columns
               crossAxisCount = 3;
               childAspectRatio = 2.3;
@@ -847,9 +1227,7 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(16),
@@ -866,28 +1244,60 @@ class _ActionButton extends StatelessWidget {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: EdgeInsets.all(
+              ResponsiveHelper.padding(
+                context,
+                mobile: 12,
+                tablet: 14,
+                desktop: 16,
+              ),
+            ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(
+                    ResponsiveHelper.padding(
+                      context,
+                      mobile: 10,
+                      tablet: 11,
+                      desktop: 12,
+                    ),
+                  ),
                   decoration: BoxDecoration(
                     color: MallonColors.primaryGreen.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     icon,
-                    size: 28,
+                    size: ResponsiveHelper.iconSize(
+                      context,
+                      mobile: 24,
+                      tablet: 26,
+                      desktop: 28,
+                    ),
                     color: MallonColors.primaryGreen,
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(
+                  height: ResponsiveHelper.padding(
+                    context,
+                    mobile: 10,
+                    tablet: 11,
+                    desktop: 12,
+                  ),
+                ),
                 Text(
                   title,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: MallonColors.primaryText,
+                    fontSize: ResponsiveHelper.fontSize(
+                      context,
+                      mobile: 13,
+                      tablet: 14,
+                      desktop: 15,
+                    ),
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 2,
@@ -896,6 +1306,498 @@ class _ActionButton extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Consumables Insights Section
+class _ConsumablesInsightsSection extends StatelessWidget {
+  const _ConsumablesInsightsSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ConsumablesProvider>(
+      builder: (context, consumablesProvider, child) {
+        final bool isLoaded =
+            !consumablesProvider.isLoading && !consumablesProvider.hasError;
+        final int totalCount = consumablesProvider.activeConsumables.length;
+        final int inStockCount = consumablesProvider.activeConsumables
+            .where((c) => !c.isOutOfStock && c.stockLevel != StockLevel.low)
+            .length;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Section Header
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(
+                    ResponsiveHelper.padding(
+                      context,
+                      mobile: 4,
+                      tablet: 5,
+                      desktop: 6,
+                    ),
+                  ),
+                  decoration: BoxDecoration(
+                    color: MallonColors.accentGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.inventory_2_outlined,
+                    color: MallonColors.accentGreen,
+                    size: ResponsiveHelper.iconSize(
+                      context,
+                      mobile: 20,
+                      tablet: 22,
+                      desktop: 24,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: ResponsiveHelper.padding(
+                    context,
+                    mobile: 8,
+                    tablet: 10,
+                    desktop: 12,
+                  ),
+                ),
+                Text(
+                  'Consumables Insights',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: MallonColors.primaryText,
+                    fontSize: ResponsiveHelper.fontSize(
+                      context,
+                      mobile: 16,
+                      tablet: 18,
+                      desktop: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Stats Grid - Responsive
+            LayoutBuilder(
+              builder: (context, constraints) {
+                int crossAxisCount;
+                double childAspectRatio;
+
+                if (constraints.maxWidth < 600) {
+                  // Mobile: 2 columns
+                  crossAxisCount = 2;
+                  childAspectRatio = 1.2;
+                } else if (constraints.maxWidth < 900) {
+                  // Tablet: 3 columns
+                  crossAxisCount = 3;
+                  childAspectRatio = 2.5;
+                } else if (constraints.maxWidth < 1200) {
+                  // Tablet: 3 columns
+                  crossAxisCount = 3;
+                  childAspectRatio = 2;
+                } else {
+                  // Desktop: 4 columns
+                  crossAxisCount = 4;
+                  childAspectRatio = 2;
+                }
+
+                return GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: crossAxisCount,
+                  childAspectRatio: childAspectRatio,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  children: [
+                    // Total Consumables
+                    _ConsumableStatCard(
+                      title: 'Total Items',
+                      value: isLoaded ? '$totalCount' : '...',
+                      icon: Icons.inventory_2,
+                      color: MallonColors.primaryGreen,
+                      isLoading: consumablesProvider.isLoading,
+                    ),
+
+                    // Low Stock
+                    _ConsumableStatCard(
+                      title: 'Low Stock',
+                      value: isLoaded
+                          ? '${consumablesProvider.lowStockCount}'
+                          : '...',
+                      icon: Icons.warning_amber_rounded,
+                      color: Colors.orange,
+                      isLoading: consumablesProvider.isLoading,
+                    ),
+
+                    // Out of Stock
+                    _ConsumableStatCard(
+                      title: 'Out of Stock',
+                      value: isLoaded
+                          ? '${consumablesProvider.outOfStockCount}'
+                          : '...',
+                      icon: Icons.remove_circle_outline,
+                      color: Colors.red,
+                      isLoading: consumablesProvider.isLoading,
+                    ),
+
+                    // In Stock
+                    _ConsumableStatCard(
+                      title: 'In Stock',
+                      value: isLoaded ? '$inStockCount' : '...',
+                      icon: Icons.check_circle_outline,
+                      color: MallonColors.available,
+                      isLoading: consumablesProvider.isLoading,
+                    ),
+                  ],
+                );
+              },
+            ),
+
+            const SizedBox(height: 16),
+
+            // Low Stock Items List
+            if (isLoaded && consumablesProvider.lowStockCount > 0)
+              _LowStockAlert(
+                lowStockItems: consumablesProvider.lowStockConsumables,
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Consumable stat card
+class _ConsumableStatCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final bool isLoading;
+
+  const _ConsumableStatCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Container(
+        padding: EdgeInsets.all(
+          ResponsiveHelper.padding(
+            context,
+            mobile: 12,
+            tablet: 14,
+            desktop: 16,
+          ),
+        ),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (isLoading)
+              SizedBox(
+                width: ResponsiveHelper.iconSize(
+                  context,
+                  mobile: 24,
+                  tablet: 28,
+                  desktop: 32,
+                ),
+                height: ResponsiveHelper.iconSize(
+                  context,
+                  mobile: 24,
+                  tablet: 28,
+                  desktop: 32,
+                ),
+                child: CircularProgressIndicator(
+                  strokeWidth: ResponsiveHelper.isMobile(context) ? 2.5 : 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(color),
+                ),
+              )
+            else
+              Container(
+                padding: EdgeInsets.all(
+                  ResponsiveHelper.padding(
+                    context,
+                    mobile: 4,
+                    tablet: 5,
+                    desktop: 5,
+                  ),
+                ),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  size: ResponsiveHelper.iconSize(
+                    context,
+                    mobile: 16,
+                    tablet: 20,
+                    desktop: 24,
+                  ),
+                  color: color,
+                ),
+              ),
+            SizedBox(
+              height: ResponsiveHelper.padding(
+                context,
+                mobile: 10,
+                tablet: 11,
+                desktop: 12,
+              ),
+            ),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: ResponsiveHelper.fontSize(
+                  context,
+                  mobile: 16,
+                  tablet: 18,
+                  desktop: 20,
+                ),
+                color: color,
+              ),
+            ),
+            SizedBox(
+              height: ResponsiveHelper.padding(
+                context,
+                mobile: 3,
+                tablet: 3.5,
+                desktop: 4,
+              ),
+            ),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: MallonColors.secondaryText,
+                fontSize: ResponsiveHelper.fontSize(
+                  context,
+                  mobile: 11,
+                  tablet: 12,
+                  desktop: 14,
+                ),
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Low stock alert widget
+class _LowStockAlert extends StatelessWidget {
+  final List<Consumable> lowStockItems;
+
+  const _LowStockAlert({required this.lowStockItems});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: Colors.orange.shade50,
+      child: Padding(
+        padding: EdgeInsets.all(
+          ResponsiveHelper.padding(
+            context,
+            mobile: 12,
+            tablet: 14,
+            desktop: 16,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange.shade700,
+                  size: ResponsiveHelper.iconSize(
+                    context,
+                    mobile: 20,
+                    tablet: 22,
+                    desktop: 24,
+                  ),
+                ),
+                SizedBox(
+                  width: ResponsiveHelper.padding(
+                    context,
+                    mobile: 6,
+                    tablet: 7,
+                    desktop: 8,
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Items Need Restocking',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      fontSize: ResponsiveHelper.fontSize(
+                        context,
+                        mobile: 14,
+                        tablet: 15,
+                        desktop: 16,
+                      ),
+                      color: Colors.orange.shade900,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    // TODO: Navigate to consumables screen
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Navigate to Consumables screen'),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    'View All',
+                    style: TextStyle(
+                      fontSize: ResponsiveHelper.fontSize(
+                        context,
+                        mobile: 12,
+                        tablet: 13,
+                        desktop: 14,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(
+              height: ResponsiveHelper.padding(
+                context,
+                mobile: 10,
+                tablet: 11,
+                desktop: 12,
+              ),
+            ),
+            ...lowStockItems.take(3).map((item) {
+              final name = item.name;
+              final currentQty = item.currentQuantity.toStringAsFixed(0);
+              final minQty = item.minQuantity.toStringAsFixed(0);
+              final unitLabel = item.unit.abbreviation;
+
+              return Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: ResponsiveHelper.padding(
+                    context,
+                    mobile: 3,
+                    tablet: 3.5,
+                    desktop: 4,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: ResponsiveHelper.iconSize(
+                        context,
+                        mobile: 6,
+                        tablet: 7,
+                        desktop: 8,
+                      ),
+                      height: ResponsiveHelper.iconSize(
+                        context,
+                        mobile: 6,
+                        tablet: 7,
+                        desktop: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    SizedBox(
+                      width: ResponsiveHelper.padding(
+                        context,
+                        mobile: 10,
+                        tablet: 11,
+                        desktop: 12,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: TextStyle(
+                          color: MallonColors.primaryText,
+                          fontSize: ResponsiveHelper.fontSize(
+                            context,
+                            mobile: 13,
+                            tablet: 14,
+                            desktop: 15,
+                          ),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$currentQty / $minQty $unitLabel',
+                      style: TextStyle(
+                        color: Colors.orange.shade700,
+                        fontWeight: FontWeight.bold,
+                        fontSize: ResponsiveHelper.fontSize(
+                          context,
+                          mobile: 12,
+                          tablet: 12.5,
+                          desktop: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            if (lowStockItems.length > 3) ...[
+              SizedBox(
+                height: ResponsiveHelper.padding(
+                  context,
+                  mobile: 6,
+                  tablet: 7,
+                  desktop: 8,
+                ),
+              ),
+              Text(
+                '+${lowStockItems.length - 3} more items need attention',
+                style: TextStyle(
+                  color: Colors.orange.shade700,
+                  fontSize: ResponsiveHelper.fontSize(
+                    context,
+                    mobile: 11,
+                    tablet: 11.5,
+                    desktop: 12,
+                  ),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );

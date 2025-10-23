@@ -7,6 +7,7 @@ import 'providers/staff_provider.dart';
 import 'providers/transactions_provider.dart';
 import 'providers/scan_provider.dart';
 import 'providers/consumables_provider.dart';
+import 'providers/camera_provider.dart';
 import 'services/admin_initialization_service.dart';
 import 'core/theme/mallon_theme.dart';
 import 'core/routing/app_router.dart';
@@ -25,6 +26,9 @@ void main() async {
       providers: [
         // Auth provider - must be first as others depend on it
         ChangeNotifierProvider(create: (context) => AuthProvider()),
+
+        // Camera provider - centralized camera lifecycle management
+        ChangeNotifierProvider(create: (context) => CameraProvider()),
 
         // Tools provider - always available
         ChangeNotifierProvider(create: (context) => ToolsProvider()),
