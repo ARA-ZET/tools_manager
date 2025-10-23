@@ -108,7 +108,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       );
 
       final scanProvider = context.read<ScanProvider>();
-      
+
       // Set batch type to consumable_usage if not set (default for consumables)
       if (!scanProvider.isBatchTypeSet) {
         scanProvider.setBatchType(BatchType.consumable_usage);
@@ -118,14 +118,14 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       if (scanProvider.isConsumableBatch) {
         // Show quantity dialog
         final quantity = await _showConsumableQuantityDialog(consumable);
-        
+
         if (quantity != null && quantity > 0) {
           // Add to batch with quantity
           scanProvider.addConsumableToBatch(
             consumable.uniqueId,
             quantity: quantity,
           );
-          
+
           // Show success feedback
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -147,7 +147,9 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Cannot mix consumables with ${scanProvider.batchType == BatchType.checkout ? "checkout" : "checkin"} batch'),
+              content: Text(
+                'Cannot mix consumables with ${scanProvider.batchType == BatchType.checkout ? "checkout" : "checkin"} batch',
+              ),
               backgroundColor: MallonColors.error,
               duration: const Duration(seconds: 2),
             ),
@@ -165,7 +167,9 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       _clearScanFeedback();
       _isDialogShowing = false;
 
-      debugPrint('✅ Batch mode - ready for new scan after consumable processed');
+      debugPrint(
+        '✅ Batch mode - ready for new scan after consumable processed',
+      );
     } else {
       // Unknown item type - show in UI
       _updateScanFeedback(scannedItem.id, 'Unknown', false);
@@ -408,7 +412,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
   Future<double?> _showConsumableQuantityDialog(Consumable consumable) async {
     final TextEditingController quantityController = TextEditingController();
     final formKey = GlobalKey<FormState>();
-    
+
     return showDialog<double>(
       context: context,
       barrierDismissible: false,
@@ -418,10 +422,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
             Icon(Icons.inventory_2, color: MallonColors.primaryGreen),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                'Enter Quantity',
-                style: TextStyle(fontSize: 18),
-              ),
+              child: Text('Enter Quantity', style: TextStyle(fontSize: 18)),
             ),
           ],
         ),
@@ -928,9 +929,10 @@ class _BatchToolsListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ScanProvider>(
       builder: (context, scanProvider, child) {
-        final totalCount = scanProvider.scannedTools.length + 
-                          scanProvider.scannedConsumables.length;
-        
+        final totalCount =
+            scanProvider.scannedTools.length +
+            scanProvider.scannedConsumables.length;
+
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Card(
@@ -969,7 +971,7 @@ class _BatchToolsListCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (scanProvider.scannedTools.isNotEmpty || 
+                if (scanProvider.scannedTools.isNotEmpty ||
                     scanProvider.scannedConsumables.isNotEmpty)
                   _BatchItemsList(
                     scannedTools: scanProvider.scannedTools,
@@ -1002,7 +1004,7 @@ class _BatchItemsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalCount = scannedTools.length + scannedConsumableIds.length;
-    
+
     return Container(
       constraints: const BoxConstraints(maxHeight: 300),
       child: ListView.builder(
@@ -1203,7 +1205,9 @@ class _BatchConsumableTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer2<ConsumablesProvider, ScanProvider>(
       builder: (context, consumablesProvider, scanProvider, child) {
-        final consumable = consumablesProvider.getConsumableByUniqueId(consumableId);
+        final consumable = consumablesProvider.getConsumableByUniqueId(
+          consumableId,
+        );
         final quantity = scanProvider.getConsumableQuantity(consumableId) ?? 0;
 
         return Card(
@@ -1212,11 +1216,7 @@ class _BatchConsumableTile extends StatelessWidget {
           child: ListTile(
             leading: CircleAvatar(
               backgroundColor: MallonColors.primaryGreen,
-              child: Icon(
-                Icons.inventory_2,
-                color: Colors.white,
-                size: 20,
-              ),
+              child: Icon(Icons.inventory_2, color: Colors.white, size: 20),
             ),
             title: Row(
               children: [
@@ -1254,7 +1254,10 @@ class _BatchConsumableTile extends StatelessWidget {
                   Text('Category: ${consumable.category}'),
                   Row(
                     children: [
-                      Text('Assigning: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        'Assigning: ',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       Text(
                         '$quantity ${consumable.unit.name}',
                         style: TextStyle(
@@ -1271,7 +1274,9 @@ class _BatchConsumableTile extends StatelessWidget {
                       Text(
                         '${consumable.currentQuantity} ${consumable.unit.name}',
                         style: TextStyle(
-                          color: consumable.currentQuantity <= consumable.minQuantity
+                          color:
+                              consumable.currentQuantity <=
+                                  consumable.minQuantity
                               ? MallonColors.error
                               : MallonColors.secondaryText,
                           fontSize: 12,

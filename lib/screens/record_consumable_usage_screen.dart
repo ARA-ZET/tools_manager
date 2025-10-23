@@ -53,7 +53,7 @@ class _RecordConsumableUsageScreenState
 
   Future<void> _loadCurrentStaff() async {
     if (!mounted) return;
-    
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -62,7 +62,8 @@ class _RecordConsumableUsageScreenState
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final staff = await _staffService.getStaffByAuthUid(user.uid)
+        final staff = await _staffService
+            .getStaffByAuthUid(user.uid)
             .timeout(const Duration(seconds: 10));
         if (mounted) {
           setState(() {
@@ -92,9 +93,9 @@ class _RecordConsumableUsageScreenState
   Future<void> _loadAllStaff() async {
     try {
       // Get first event from the stream with timeout
-      final staff = await _staffService.getActiveStaffStream()
-          .first
-          .timeout(const Duration(seconds: 10));
+      final staff = await _staffService.getActiveStaffStream().first.timeout(
+        const Duration(seconds: 10),
+      );
       if (mounted) {
         setState(() {
           _allStaff = staff;
@@ -213,8 +214,8 @@ class _RecordConsumableUsageScreenState
                 ),
               )
             : _errorMessage != null
-                ? _buildErrorView()
-                : _buildContent(),
+            ? _buildErrorView()
+            : _buildContent(),
       ),
     );
   }
@@ -429,9 +430,8 @@ class _RecordConsumableUsageScreenState
                           children: [
                             CircleAvatar(
                               radius: 16,
-                              backgroundColor: MallonColors.primaryGreen.withOpacity(
-                                0.2,
-                              ),
+                              backgroundColor: MallonColors.primaryGreen
+                                  .withOpacity(0.2),
                               child: Text(
                                 staff.fullName.substring(0, 1).toUpperCase(),
                                 style: TextStyle(
