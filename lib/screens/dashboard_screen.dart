@@ -946,8 +946,8 @@ class _ReadableActivityTile extends StatelessWidget {
                         Expanded(
                           child: Text(
                             !isCheckout
-                                ? "Assigned to: ${staffName}"
-                                : "Checked out by: ${staffName}",
+                                ? "Assigned to: $staffName"
+                                : "Checked out by: $staffName",
                             style: TextStyle(
                               color: MallonColors.secondaryText,
                               fontSize: ResponsiveHelper.fontSize(

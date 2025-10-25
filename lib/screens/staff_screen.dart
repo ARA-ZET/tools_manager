@@ -533,7 +533,7 @@ class _StaffScreenState extends State<StaffScreen>
 
                   // Role dropdown
                   DropdownButtonFormField<StaffRole>(
-                    value: selectedRole,
+                    initialValue: selectedRole,
                     decoration: const InputDecoration(
                       labelText: 'Assign Role*',
                       border: OutlineInputBorder(),

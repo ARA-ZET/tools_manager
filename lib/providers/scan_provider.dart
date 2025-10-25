@@ -256,19 +256,29 @@ class ScanProvider extends ChangeNotifier {
 
   // Check if a tool can be added to current batch
   bool canAddToBatch(bool isToolAvailable) {
+    debugPrint('🔍 canAddToBatch called:');
+    debugPrint('  - isToolAvailable: $isToolAvailable');
+    debugPrint('  - current batch type: $_batchType');
+
     // If batch type not set, any tool can start the batch
-    if (_batchType == null) return true;
+    if (_batchType == null) {
+      debugPrint('  - ✅ No batch type set - allowing (first tool)');
+      return true;
+    }
 
     // If batch is for checkout, only available tools allowed
     if (_batchType == BatchType.checkout && !isToolAvailable) {
+      debugPrint('  - ❌ Checkout batch cannot accept checked-out tool');
       return false;
     }
 
     // If batch is for checkin, only checked out tools allowed
     if (_batchType == BatchType.checkin && isToolAvailable) {
+      debugPrint('  - ❌ Checkin batch cannot accept available tool');
       return false;
     }
 
+    debugPrint('  - ✅ Tool matches batch type');
     return true;
   }
 

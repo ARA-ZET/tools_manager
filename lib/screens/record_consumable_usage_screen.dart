@@ -125,7 +125,7 @@ class _RecordConsumableUsageScreenState
 
     if (quantity > widget.consumable.currentQuantity) {
       _showError(
-        'Quantity used (${quantity}) cannot exceed available stock (${widget.consumable.currentQuantity})',
+        'Quantity used ($quantity) cannot exceed available stock (${widget.consumable.currentQuantity})',
       );
       return;
     }
@@ -167,7 +167,7 @@ class _RecordConsumableUsageScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Recorded ${quantity} ${widget.consumable.unit.abbreviation} usage',
+              'Recorded $quantity ${widget.consumable.unit.abbreviation} usage',
             ),
             backgroundColor: MallonColors.successGreen,
           ),
@@ -417,7 +417,7 @@ class _RecordConsumableUsageScreenState
                 child: Padding(
                   padding: const EdgeInsets.all(4),
                   child: DropdownButtonFormField<Staff>(
-                    value: _selectedRecipient,
+                    initialValue: _selectedRecipient,
                     decoration: const InputDecoration(
                       labelText: 'Select recipient',
                       border: OutlineInputBorder(),

@@ -18,10 +18,21 @@ class ConsumableTransactionService {
           .doc(consumableId);
       final staffRef = _firestore.collection('staff').doc(usedBy);
 
+      // Get current consumable data to calculate before/after values
+      final consumableDoc = await consumableRef.get();
+      final currentQuantity =
+          (consumableDoc.data()?['currentQuantity'] as num?)?.toDouble() ?? 0.0;
+
+      final quantityBefore = currentQuantity;
+      final quantityChange = -quantity; // Negative for usage
+      final quantityAfter = currentQuantity - quantity;
+
       final data = {
         'consumableRef': consumableRef,
         'action': 'usage',
-        'quantity': quantity,
+        'quantityBefore': quantityBefore,
+        'quantityChange': quantityChange,
+        'quantityAfter': quantityAfter,
         'usedBy': staffRef,
         'notes': notes,
         'timestamp': FieldValue.serverTimestamp(),
@@ -57,13 +68,24 @@ class ConsumableTransactionService {
           .doc(consumableId);
       final staffRef = _firestore.collection('staff').doc(restockedBy);
 
+      // Get current consumable data to calculate before/after values
+      final consumableDoc = await consumableRef.get();
+      final currentQuantity =
+          (consumableDoc.data()?['currentQuantity'] as num?)?.toDouble() ?? 0.0;
+
+      final quantityBefore = currentQuantity;
+      final quantityChange = quantity; // Positive for restock
+      final quantityAfter = currentQuantity + quantity;
+
       final transaction = await _firestore
           .collection('consumable_transactions')
           .add({
             'consumableRef': consumableRef,
             'action': 'restock',
-            'quantity': quantity,
-            'restockedBy': staffRef,
+            'quantityBefore': quantityBefore,
+            'quantityChange': quantityChange,
+            'quantityAfter': quantityAfter,
+            'approvedBy': staffRef,
             'notes': notes,
             'timestamp': FieldValue.serverTimestamp(),
             'createdAt': FieldValue.serverTimestamp(),

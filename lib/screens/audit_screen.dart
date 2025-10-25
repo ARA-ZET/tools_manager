@@ -458,6 +458,11 @@ class _AuditScreenState extends State<AuditScreen> {
             key: ValueKey('batch_$batchId'),
             batchId: batchId,
             transactions: item['transactions'] as List<Map<String, dynamic>>,
+            toolTransactions:
+                item['toolTransactions'] as List<Map<String, dynamic>>? ?? [],
+            consumableTransactions:
+                item['consumableTransactions'] as List<Map<String, dynamic>>? ??
+                [],
             action: item['action'] as String,
             staffName: item['staffName'] as String,
             processedBy: item['processedBy'] as String? ?? 'Unknown',
@@ -506,6 +511,7 @@ class _AuditScreenState extends State<AuditScreen> {
   }
 
   /// Group transactions - batch operations are grouped together, individual transactions remain separate
+  /// Now supports both tool and consumable transactions in same batch
   List<Map<String, dynamic>> _groupTransactions(
     List<Map<String, dynamic>> transactions,
   ) {
@@ -514,23 +520,38 @@ class _AuditScreenState extends State<AuditScreen> {
 
     for (final transaction in transactions) {
       final notes = transaction['notes'] as String?;
+      final batchId = transaction['batchId'] as String?;
 
+      // Check for batch ID in notes or batchId field
+      String? extractedBatchId;
+
+      // Try to extract from notes (works for both tool and consumable transactions)
       if (notes != null && notes.contains('Batch operation:')) {
-        // Extract batch ID from notes
         final batchIdMatch = RegExp(
           r'Batch operation: (BATCH_\d+)',
         ).firstMatch(notes);
         if (batchIdMatch != null) {
-          final batchId = batchIdMatch.group(1)!;
-          batchGroups.putIfAbsent(batchId, () => []);
-          batchGroups[batchId]!.add(transaction);
-        } else {
-          // If we can't extract batch ID, show as individual
-          individualItems.add({
-            'transaction': transaction,
-            'isBatchGroup': false,
-          });
+          extractedBatchId = batchIdMatch.group(1)!;
         }
+      } else if (notes != null && notes.contains('Batch ID:')) {
+        // Consumable transactions have: 'Batch assignment (Batch ID: BATCH_XXX)'
+        final batchIdMatch = RegExp(
+          r'Batch ID:\s*(BATCH_\d+)',
+        ).firstMatch(notes);
+        if (batchIdMatch != null) {
+          extractedBatchId = batchIdMatch.group(1)!;
+        }
+      }
+
+      // Also check direct batchId field
+      if (extractedBatchId == null && batchId != null) {
+        extractedBatchId = batchId;
+      }
+
+      if (extractedBatchId != null) {
+        // Add to batch group
+        batchGroups.putIfAbsent(extractedBatchId, () => []);
+        batchGroups[extractedBatchId]!.add(transaction);
       } else {
         // Non-batch transaction
         individualItems.add({
@@ -546,17 +567,57 @@ class _AuditScreenState extends State<AuditScreen> {
     for (final entry in batchGroups.entries) {
       final batchTransactions = entry.value;
       if (batchTransactions.isNotEmpty) {
-        final firstTransaction = batchTransactions.first;
-        final metadata = firstTransaction['metadata'] as Map<String, dynamic>?;
+        // Separate tools and consumables
+        final toolTransactions = batchTransactions
+            .where((t) => t['type'] != 'consumable')
+            .toList();
+        final consumableTransactions = batchTransactions
+            .where((t) => t['type'] == 'consumable')
+            .toList();
+
+        // Extract staff names from any transaction that has the metadata
+        // Try to get from the first tool transaction, then first consumable
+        String staffName = 'Unknown';
+        String processedBy = 'Unknown';
+
+        // Try tool transactions first
+        if (toolTransactions.isNotEmpty) {
+          final toolMetadata =
+              toolTransactions.first['metadata'] as Map<String, dynamic>?;
+          if (toolMetadata?['staffName'] != null) {
+            staffName = toolMetadata!['staffName'] as String;
+          }
+          if (toolMetadata?['adminName'] != null) {
+            processedBy = toolMetadata!['adminName'] as String;
+          }
+        }
+
+        // If still unknown, try consumable transactions
+        if ((staffName == 'Unknown' || processedBy == 'Unknown') &&
+            consumableTransactions.isNotEmpty) {
+          final consumableMetadata =
+              consumableTransactions.first['metadata'] as Map<String, dynamic>?;
+          if (staffName == 'Unknown' &&
+              consumableMetadata?['staffName'] != null) {
+            staffName = consumableMetadata!['staffName'] as String;
+          }
+          if (processedBy == 'Unknown' &&
+              consumableMetadata?['adminName'] != null) {
+            processedBy = consumableMetadata!['adminName'] as String;
+          }
+        }
+
         result.add({
           'isBatchGroup': true,
           'batchId': entry.key,
           'transactions': batchTransactions,
-          'action': firstTransaction['action'],
-          'staffName': metadata?['staffName'] ?? 'Unknown',
-          'processedBy': metadata?['adminName'] ?? 'Unknown',
+          'toolTransactions': toolTransactions,
+          'consumableTransactions': consumableTransactions,
+          'action': batchTransactions.first['action'],
+          'staffName': staffName,
+          'processedBy': processedBy,
           'timestamp':
-              (firstTransaction['timestamp'] as dynamic)?.toDate() ??
+              (batchTransactions.first['timestamp'] as dynamic)?.toDate() ??
               DateTime.now(),
         });
       }
@@ -864,7 +925,7 @@ class _ActivityItem extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    '${action.toUpperCase()} - ${toolName}',
+                    '${action.toUpperCase()} - $toolName',
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 12,
@@ -967,8 +1028,8 @@ class _ActivityItem extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 isCheckout
-                                    ? "Assigned to: ${staffName}"
-                                    : "Returned by: ${staffName}",
+                                    ? "Assigned to: $staffName"
+                                    : "Returned by: $staffName",
                                 style: const TextStyle(
                                   color: MallonColors.secondaryText,
                                   fontSize: 13,
@@ -1233,10 +1294,12 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-/// Batch group item widget - shows multiple tools processed in a batch
+/// Batch group item widget - shows multiple tools and consumables processed in a batch
 class _BatchGroupItem extends StatelessWidget {
   final String batchId;
   final List<Map<String, dynamic>> transactions;
+  final List<Map<String, dynamic>> toolTransactions;
+  final List<Map<String, dynamic>> consumableTransactions;
   final String action;
   final String staffName;
   final String processedBy;
@@ -1248,6 +1311,8 @@ class _BatchGroupItem extends StatelessWidget {
     super.key,
     required this.batchId,
     required this.transactions,
+    required this.toolTransactions,
+    required this.consumableTransactions,
     required this.action,
     required this.staffName,
     required this.processedBy,
@@ -1259,7 +1324,9 @@ class _BatchGroupItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCheckout = action.toLowerCase() == 'checkout';
-    final toolCount = transactions.length;
+    final toolCount = toolTransactions.length;
+    final consumableCount = consumableTransactions.length;
+    final totalCount = toolCount + consumableCount;
 
     // Different colors for checkout vs checkin batches
     final batchColor = isCheckout
@@ -1268,6 +1335,18 @@ class _BatchGroupItem extends StatelessWidget {
     final batchBgColor = isCheckout
         ? MallonColors.checkedOut.withOpacity(0.1)
         : MallonColors.available.withOpacity(0.1);
+
+    // Build title string
+    String titleText = 'BATCH ${action.toUpperCase()} - ';
+    if (toolCount > 0 && consumableCount > 0) {
+      titleText +=
+          '$toolCount tool${toolCount != 1 ? 's' : ''} and $consumableCount consumable${consumableCount != 1 ? 's' : ''}';
+    } else if (toolCount > 0) {
+      titleText += '$toolCount tool${toolCount != 1 ? 's' : ''}';
+    } else if (consumableCount > 0) {
+      titleText +=
+          '$consumableCount consumable${consumableCount != 1 ? 's' : ''}';
+    }
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -1287,7 +1366,7 @@ class _BatchGroupItem extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'BATCH ${action.toUpperCase()} - $toolCount tools',
+                    titleText,
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 12,
@@ -1304,7 +1383,7 @@ class _BatchGroupItem extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    '$toolCount',
+                    '$totalCount',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -1319,33 +1398,56 @@ class _BatchGroupItem extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Left column - Tools and Time
+                  // Left column - Tools, Consumables and Time
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       spacing: 4,
                       children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.layers,
-                              size: 14,
-                              color: MallonColors.secondaryText,
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                '$toolCount tool${toolCount > 1 ? 's' : ''}',
-                                style: const TextStyle(
-                                  color: MallonColors.primaryText,
-                                  fontSize: 13,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                        if (toolCount > 0)
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.build,
+                                size: 14,
+                                color: MallonColors.secondaryText,
                               ),
-                            ),
-                          ],
-                        ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  '$toolCount tool${toolCount != 1 ? 's' : ''}',
+                                  style: const TextStyle(
+                                    color: MallonColors.primaryText,
+                                    fontSize: 13,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (consumableCount > 0)
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.inventory_2,
+                                size: 14,
+                                color: MallonColors.secondaryText,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  '$consumableCount consumable${consumableCount != 1 ? 's' : ''}',
+                                  style: const TextStyle(
+                                    color: MallonColors.primaryText,
+                                    fontSize: 13,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         Row(
                           children: [
                             const Icon(
@@ -1487,14 +1589,26 @@ class _BatchGroupItem extends StatelessWidget {
                           value: action.toUpperCase(),
                           color: batchColor,
                         ),
-                        const SizedBox(height: 8),
-                        _buildDetailRow(
-                          icon: Icons.build,
-                          label: 'Tools Count',
-                          value:
-                              '${transactions.length} tool${transactions.length > 1 ? 's' : ''}',
-                          color: batchColor,
-                        ),
+                        if (toolCount > 0) ...[
+                          const SizedBox(height: 8),
+                          _buildDetailRow(
+                            icon: Icons.build,
+                            label: 'Tools Count',
+                            value:
+                                '$toolCount tool${toolCount != 1 ? 's' : ''}',
+                            color: batchColor,
+                          ),
+                        ],
+                        if (consumableCount > 0) ...[
+                          const SizedBox(height: 8),
+                          _buildDetailRow(
+                            icon: Icons.inventory_2,
+                            label: 'Consumables Count',
+                            value:
+                                '$consumableCount consumable${consumableCount != 1 ? 's' : ''}',
+                            color: batchColor,
+                          ),
+                        ],
                         const SizedBox(height: 8),
                         _buildDetailRow(
                           icon: Icons.person,
@@ -1522,94 +1636,193 @@ class _BatchGroupItem extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   // Tools List Section
-                  Row(
-                    children: [
-                      Icon(Icons.build, size: 18, color: batchColor),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Tools in This Batch (${transactions.length})',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
+                  if (toolCount > 0) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.build, size: 18, color: batchColor),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Tools in This Batch ($toolCount)',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ...transactions.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final transaction = entry.value;
-                    final metadata =
-                        transaction['metadata'] as Map<String, dynamic>?;
-                    final toolName =
-                        metadata?['toolName'] as String? ?? 'Unknown Tool';
-                    final toolBrand = metadata?['toolBrand'] as String?;
-                    final toolModel = metadata?['toolModel'] as String?;
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ...toolTransactions.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final transaction = entry.value;
+                      final metadata =
+                          transaction['metadata'] as Map<String, dynamic>?;
+                      final toolName =
+                          metadata?['toolName'] as String? ?? 'Unknown Tool';
+                      final toolBrand = metadata?['toolBrand'] as String?;
+                      final toolModel = metadata?['toolModel'] as String?;
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: batchColor.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Center(
-                              child: Text(
-                                '${index + 1}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: batchColor,
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: batchColor.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${index + 1}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: batchColor,
+                                  ),
                                 ),
                               ),
                             ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    toolName,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (toolBrand != null || toolModel != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        '${toolBrand ?? ''} ${toolModel ?? ''}'
+                                            .trim(),
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              isCheckout ? Icons.output : Icons.input,
+                              size: 16,
+                              color: batchColor,
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+
+                  // Consumables List Section
+                  if (consumableCount > 0) ...[
+                    if (toolCount > 0) const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.inventory_2,
+                          size: 18,
+                          color: MallonColors.primaryGreen,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Consumables in This Batch ($consumableCount)',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  toolName,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ...consumableTransactions.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final transaction = entry.value;
+                      final consumableName =
+                          transaction['consumableName'] as String? ??
+                          'Unknown Consumable';
+                      final quantity =
+                          (transaction['quantity'] as num?)?.abs() ?? 0.0;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: MallonColors.primaryGreen.withOpacity(
+                                  0.15,
+                                ),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${index + 1}',
                                   style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: MallonColors.primaryGreen,
                                   ),
                                 ),
-                                if (toolBrand != null || toolModel != null)
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    consumableName,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                   Padding(
                                     padding: const EdgeInsets.only(top: 2),
                                     child: Text(
-                                      '${toolBrand ?? ''} ${toolModel ?? ''}'
-                                          .trim(),
+                                      'Quantity: $quantity',
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: Colors.grey[600],
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          Icon(
-                            isCheckout ? Icons.output : Icons.input,
-                            size: 16,
-                            color: batchColor,
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
+                            Icon(
+                              Icons.remove_circle_outline,
+                              size: 16,
+                              color: MallonColors.primaryGreen,
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
                 ],
               ),
             ),

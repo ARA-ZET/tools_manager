@@ -417,4 +417,117 @@ class ToolHistoryService {
       rethrow;
     }
   }
+
+  /// Get consumable transactions for current month (for audit screen)
+  /// Consumable transactions are stored in consumable_transactions collection
+  /// and have batch ID in their notes field
+  Future<List<Map<String, dynamic>>>
+  getCurrentMonthConsumableTransactions() async {
+    try {
+      final now = DateTime.now();
+      final startOfMonth = DateTime(now.year, now.month, 1);
+      final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+
+      final querySnapshot = await _firestore
+          .collection('consumable_transactions')
+          .where(
+            'timestamp',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth),
+          )
+          .where(
+            'timestamp',
+            isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth),
+          )
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      final List<Map<String, dynamic>> transactions = [];
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+
+        // Extract batch ID from notes if present
+        String? batchId;
+        final notes = data['notes'] as String?;
+        if (notes != null && notes.contains('Batch ID:')) {
+          final batchIdMatch = RegExp(
+            r'Batch ID:\s*(BATCH_\d+)',
+          ).firstMatch(notes);
+          if (batchIdMatch != null) {
+            batchId = batchIdMatch.group(1);
+          }
+        }
+
+        // Resolve references to get metadata
+        final consumableRef = data['consumableRef'] as DocumentReference?;
+        final usedByRef = data['usedBy'] as DocumentReference?;
+        final assignedToRef = data['assignedTo'] as DocumentReference?;
+
+        String? consumableName;
+        String? staffName;
+        String? assignedToName;
+
+        if (consumableRef != null) {
+          try {
+            final consumableDoc = await consumableRef.get();
+            final consumableData =
+                consumableDoc.data() as Map<String, dynamic>?;
+            consumableName = consumableData?['name'] as String?;
+          } catch (e) {
+            debugPrint('❌ Error fetching consumable: $e');
+          }
+        }
+
+        if (usedByRef != null) {
+          try {
+            final staffDoc = await usedByRef.get();
+            final staffData = staffDoc.data() as Map<String, dynamic>?;
+            staffName = staffData?['name'] as String?;
+          } catch (e) {
+            debugPrint('❌ Error fetching staff: $e');
+          }
+        }
+
+        if (assignedToRef != null) {
+          try {
+            final staffDoc = await assignedToRef.get();
+            final staffData = staffDoc.data() as Map<String, dynamic>?;
+            assignedToName = staffData?['name'] as String?;
+          } catch (e) {
+            debugPrint('❌ Error fetching assigned to staff: $e');
+          }
+        }
+
+        transactions.add({
+          'id': doc.id,
+          'type': 'consumable', // Mark as consumable transaction
+          'action': data['action'] ?? 'usage',
+          'consumableRef': consumableRef,
+          'consumableName': consumableName ?? 'Unknown Consumable',
+          'quantity': data['quantityChange'] ?? 0.0,
+          'usedBy': usedByRef,
+          'usedByName': staffName ?? 'Unknown', // Admin who processed
+          'assignedTo': assignedToRef,
+          'assignedToName': assignedToName ?? 'Unknown', // Worker assigned to
+          'batchId': batchId,
+          'notes': notes,
+          'timestamp': data['timestamp'],
+          'metadata': {
+            'consumableName': consumableName ?? 'Unknown Consumable',
+            'staffName': assignedToName ?? 'Unknown', // Worker assigned to
+            'adminName': staffName ?? 'Unknown', // Admin who processed
+            'quantity': (data['quantityChange'] as num?)?.abs() ?? 0.0,
+          },
+        });
+      }
+
+      debugPrint(
+        '✅ Fetched ${transactions.length} consumable transactions for current month',
+      );
+      return transactions;
+    } catch (e) {
+      debugPrint('❌ Error fetching consumable transactions: $e');
+      return [];
+    }
+  }
 }

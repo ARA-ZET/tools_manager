@@ -8,6 +8,7 @@ import '../../providers/tools_provider.dart';
 import '../../providers/scan_provider.dart';
 import '../../providers/staff_provider.dart';
 import '../../providers/consumables_provider.dart';
+import '../../services/consumable_transaction_service.dart';
 import '../universal_scanner.dart';
 import 'tool_scan_dialogs.dart';
 import 'tool_transaction_handler.dart';
@@ -109,52 +110,46 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
 
       final scanProvider = context.read<ScanProvider>();
 
-      // Set batch type to consumable_usage if not set (default for consumables)
+      // Determine action based on batch type
+      // If batch is checkin, treat consumable as restock (adding back to stock)
+      // If batch is checkout or not set, treat as usage (removing from stock)
+      bool isRestock = scanProvider.batchType == BatchType.checkin;
+
+      // If no batch type set yet and this is first item, default to usage
       if (!scanProvider.isBatchTypeSet) {
         scanProvider.setBatchType(BatchType.consumable_usage);
       }
 
-      // Check if batch type is consumable-related
-      if (scanProvider.isConsumableBatch) {
-        // Show quantity dialog
-        final quantity = await _showConsumableQuantityDialog(consumable);
+      // Show quantity dialog with appropriate context
+      final quantity = await _showConsumableQuantityDialog(
+        consumable,
+        isRestock: isRestock,
+      );
 
-        if (quantity != null && quantity > 0) {
-          // Add to batch with quantity
-          scanProvider.addConsumableToBatch(
-            consumable.uniqueId,
-            quantity: quantity,
-          );
+      if (quantity != null && quantity > 0) {
+        // Add to batch with quantity
+        scanProvider.addConsumableToBatch(
+          consumable.uniqueId,
+          quantity: quantity,
+        );
 
-          // Show success feedback
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  '✓ ${consumable.name} ($quantity ${consumable.unit.name}) added to batch',
-                ),
-                backgroundColor: MallonColors.primaryGreen,
-                duration: const Duration(seconds: 1),
-              ),
-            );
-          }
-        } else {
-          // User cancelled or entered 0
-          debugPrint('❌ User cancelled quantity dialog or entered 0');
-        }
-      } else {
-        // Wrong batch type
+        // Show success feedback with appropriate message
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Cannot mix consumables with ${scanProvider.batchType == BatchType.checkout ? "checkout" : "checkin"} batch',
+                isRestock
+                    ? '✓ ${consumable.name} ($quantity ${consumable.unit.name}) added to restock batch'
+                    : '✓ ${consumable.name} ($quantity ${consumable.unit.name}) added to batch',
               ),
-              backgroundColor: MallonColors.error,
-              duration: const Duration(seconds: 2),
+              backgroundColor: MallonColors.primaryGreen,
+              duration: const Duration(seconds: 1),
             ),
           );
         }
+      } else {
+        // User cancelled or entered 0
+        debugPrint('❌ User cancelled quantity dialog or entered 0');
       }
 
       if (!mounted) {
@@ -266,18 +261,45 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       return;
     }
 
-    // Check if tool matches the batch type using real-time status
-    final canAdd = scanProvider.canAddToBatch(tool.isAvailable);
+    // Determine if this tool can be added based on batch type
+    // If batch type is not set, this is the first tool - always allow
+    // If batch type is set, check if tool status matches batch type
+    bool canAdd = true;
+    String? rejectionReason;
 
-    if (!canAdd) {
-      // Tool doesn't match batch type - show error and reject
+    debugPrint('📋 Batch validation:');
+    debugPrint('  - Batch type set: ${scanProvider.isBatchTypeSet}');
+    debugPrint('  - Current batch type: ${scanProvider.batchType}');
+    debugPrint('  - Tool ${tool.uniqueId}:');
+    debugPrint('    * status: ${tool.status}');
+    debugPrint('    * isAvailable: ${tool.isAvailable}');
+    debugPrint('    * currentHolder: ${tool.currentHolder?.id ?? "none"}');
+
+    if (scanProvider.isBatchTypeSet) {
+      // Batch type already determined by first tool
+      canAdd = scanProvider.canAddToBatch(tool.isAvailable);
+
+      debugPrint('  - canAddToBatch result: $canAdd');
+
+      if (!canAdd) {
+        final batchTypeStr = scanProvider.batchType == BatchType.checkout
+            ? 'checkout (available tools only)'
+            : 'checkin (checked out tools only)';
+
+        rejectionReason =
+            'This batch is for $batchTypeStr.\n\n'
+            'Tool: ${tool.displayName}\n'
+            'Status: ${tool.isAvailable ? "Available" : "Checked Out"}';
+      }
+    }
+    // If batch type not set, this is first tool - always allow
+
+    if (!canAdd && rejectionReason != null) {
+      // Tool doesn't match established batch type - show error
       debugPrint(
         '🚫 Tool ${tool.displayName} rejected: Status is ${tool.status}, batch type is ${scanProvider.batchType}',
       );
       _isDialogShowing = true;
-      final batchTypeStr = scanProvider.batchType == BatchType.checkout
-          ? 'checkout (available tools only)'
-          : 'checkin (checked out tools only)';
 
       await showDialog(
         context: context,
@@ -287,37 +309,20 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
             children: [
               Icon(Icons.warning, color: Colors.orange),
               SizedBox(width: 8),
-              Text('Wrong Tool Type'),
+              Text('Cannot Mix Batch Types'),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'This batch is for $batchTypeStr.',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Tool: ${tool.displayName}',
-                style: TextStyle(color: MallonColors.secondaryText),
-              ),
-              Text(
-                'Status: ${tool.isAvailable ? "Available" : "Checked Out"}',
-                style: TextStyle(
-                  color: tool.isAvailable
-                      ? MallonColors.available
-                      : MallonColors.checkedOut,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              Text(rejectionReason!, style: TextStyle(fontSize: 14)),
               SizedBox(height: 12),
               Text(
                 tool.isAvailable
-                    ? 'This tool is available and cannot be checked in.'
-                    : 'This tool is already checked out and cannot be checked out again.',
-                style: TextStyle(fontSize: 13),
+                    ? 'This tool is available and cannot be added to a check-in batch.'
+                    : 'This tool is checked out and cannot be added to a checkout batch.',
+                style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
               ),
             ],
           ),
@@ -330,7 +335,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
         ),
       );
       _isDialogShowing = false;
-      _clearScanFeedback(); // Clear processing state after dialog closes
+      _clearScanFeedback();
       return;
     }
 
@@ -341,7 +346,11 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       context: context,
       barrierColor: Colors.black54,
       barrierDismissible: true,
-      builder: (context) => AddToBatchConfirmationDialog(tool: tool),
+      builder: (context) => AddToBatchConfirmationDialog(
+        tool: tool,
+        isBatchTypeSet: scanProvider.isBatchTypeSet,
+        batchTypeLabel: scanProvider.batchType?.name,
+      ),
     );
     _isDialogShowing = false;
     _clearScanFeedback(); // Clear processing state after dialog closes
@@ -353,9 +362,15 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
         final batchType = tool.isAvailable
             ? BatchType.checkout
             : BatchType.checkin;
+        debugPrint(
+          '🎯 Setting batch type: $batchType (first tool: ${tool.uniqueId}, isAvailable: ${tool.isAvailable})',
+        );
         scanProvider.setBatchType(batchType);
       }
 
+      debugPrint(
+        '✅ Adding tool ${tool.uniqueId} to batch (current batch type: ${scanProvider.batchType})',
+      );
       scanProvider.addToBatch(tool.uniqueId);
       // Success feedback shown in camera overlay
     } else {
@@ -409,7 +424,10 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
   }
 
   /// Show dialog to enter quantity for consumable
-  Future<double?> _showConsumableQuantityDialog(Consumable consumable) async {
+  Future<double?> _showConsumableQuantityDialog(
+    Consumable consumable, {
+    bool isRestock = false,
+  }) async {
     final TextEditingController quantityController = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
@@ -419,10 +437,16 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.inventory_2, color: MallonColors.primaryGreen),
+            Icon(
+              isRestock ? Icons.add_circle : Icons.inventory_2,
+              color: MallonColors.primaryGreen,
+            ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text('Enter Quantity', style: TextStyle(fontSize: 18)),
+              child: Text(
+                isRestock ? 'Restock Quantity' : 'Enter Quantity',
+                style: TextStyle(fontSize: 18),
+              ),
             ),
           ],
         ),
@@ -441,7 +465,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Available: ${consumable.currentQuantity} ${consumable.unit.name}',
+                'Current Stock: ${consumable.currentQuantity} ${consumable.unit.name}',
                 style: TextStyle(
                   color: consumable.currentQuantity <= consumable.minQuantity
                       ? MallonColors.error
@@ -455,10 +479,13 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
                 keyboardType: TextInputType.numberWithOptions(decimal: true),
                 autofocus: true,
                 decoration: InputDecoration(
-                  labelText: 'Quantity to assign',
+                  labelText: isRestock
+                      ? 'Quantity to add back'
+                      : 'Quantity to assign',
                   suffixText: consumable.unit.name,
                   border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.numbers),
+                  prefixIcon: Icon(isRestock ? Icons.add : Icons.numbers),
+                  helperText: isRestock ? 'Returning items to stock' : null,
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -468,7 +495,8 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
                   if (quantity == null || quantity <= 0) {
                     return 'Please enter a valid number greater than 0';
                   }
-                  if (quantity > consumable.currentQuantity) {
+                  // Only validate against available stock for usage (not restock)
+                  if (!isRestock && quantity > consumable.currentQuantity) {
                     return 'Not enough stock (${consumable.currentQuantity} available)';
                   }
                   return null;
@@ -498,7 +526,7 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
               backgroundColor: MallonColors.primaryGreen,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Add to Batch'),
+            child: Text(isRestock ? 'Add to Restock' : 'Add to Batch'),
           ),
         ],
       ),
@@ -508,6 +536,17 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
   /// Show batch submit dialog with checkout/checkin options
   void _showBatchSubmitDialog() {
     final scanProvider = context.read<ScanProvider>();
+
+    final hasTools = scanProvider.scannedTools.isNotEmpty;
+    final hasConsumables = scanProvider.scannedConsumables.isNotEmpty;
+
+    // If only consumables, show consumable dialog
+    if (hasConsumables && !hasTools) {
+      _showConsumableBatchDialog();
+      return;
+    }
+
+    // If only tools or mixed batch, show combined dialog
     final toolsProvider = context.read<ToolsProvider>();
 
     // Check how many tools are available vs checked out using real-time data
@@ -535,13 +574,209 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
       context: context,
       builder: (context) => _BatchSubmitDialog(
         toolCount: scanProvider.scannedTools.length,
+        consumableCount: scanProvider.scannedConsumables.length,
         availableCount: availableCount,
         checkedOutCount: checkedOutCount,
         toolIds: scanProvider.scannedTools,
         onCheckOut: _handleBatchCheckOut,
         onCheckIn: _handleBatchCheckIn,
+        onMixedBatch: hasConsumables ? _handleMixedBatch : null,
       ),
     );
+  }
+
+  /// Show consumable batch dialog for staff assignment
+  void _showConsumableBatchDialog() async {
+    final scanProvider = context.read<ScanProvider>();
+    final staffProvider = context.read<StaffProvider>();
+
+    // Get active staff list
+    final allStaff = staffProvider.allStaff.where((s) => s.isActive).toList();
+
+    if (allStaff.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('No active staff members found'),
+          backgroundColor: MallonColors.error,
+        ),
+      );
+      return;
+    }
+
+    // Show staff selection dialog
+    final selectedStaff = await showDialog<Staff>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.inventory_2, color: MallonColors.primaryGreen),
+            const SizedBox(width: 8),
+            const Text('Assign Consumables'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${scanProvider.scannedConsumables.length} consumable(s) to assign',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            const Text('Select staff member to assign to:'),
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 300),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: allStaff.map((staff) {
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: MallonColors.primaryGreen,
+                        child: Text(
+                          staff.fullName.substring(0, 1).toUpperCase(),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                      title: Text(staff.fullName),
+                      subtitle: Text(staff.jobCode),
+                      onTap: () => Navigator.of(context).pop(staff),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedStaff != null) {
+      await _handleBatchConsumableAssignment(selectedStaff);
+    }
+  }
+
+  /// Handle batch consumable assignment (usage or restock based on batch type)
+  Future<void> _handleBatchConsumableAssignment(
+    Staff assignedTo, {
+    String? batchId,
+    bool skipClearAndMessage = false,
+  }) async {
+    final scanProvider = context.read<ScanProvider>();
+    final consumablesProvider = context.read<ConsumablesProvider>();
+    final transactionService = ConsumableTransactionService();
+
+    // Generate unique batch ID if not provided (for mixed batches)
+    final actualBatchId =
+        batchId ?? 'BATCH_${DateTime.now().millisecondsSinceEpoch}';
+
+    // Determine if this is a restock (checkin batch) or usage
+    final isRestock = scanProvider.batchType == BatchType.checkin;
+
+    try {
+      if (!skipClearAndMessage) {
+        setState(() => _isProcessing = true);
+      }
+
+      int successCount = 0;
+      int failCount = 0;
+
+      // Process each consumable
+      for (final consumableId in scanProvider.scannedConsumableIds) {
+        final quantity = scanProvider.getConsumableQuantity(consumableId);
+        final consumable = consumablesProvider.getConsumableByUniqueId(
+          consumableId,
+        );
+
+        if (consumable == null || quantity == null) {
+          failCount++;
+          continue;
+        }
+
+        try {
+          if (isRestock) {
+            // Restock - add back to inventory (return from staff)
+            await transactionService.recordRestock(
+              consumableId: consumable.id,
+              quantity: quantity,
+              restockedBy: widget.currentStaff!.uid,
+              notes:
+                  'Batch return/restock (Batch ID: $actualBatchId) - Returned by ${assignedTo.fullName}',
+            );
+
+            // Update quantity (add back)
+            final newQuantity = consumable.currentQuantity + quantity;
+            await consumablesProvider.updateConsumable(consumable.id, {
+              'currentQuantity': newQuantity,
+            });
+          } else {
+            // Usage - assign/remove from inventory
+            await transactionService.recordUsage(
+              consumableId: consumable.id,
+              quantity: quantity,
+              usedBy: widget.currentStaff!.uid,
+              assignedTo: assignedTo.uid,
+              notes: 'Batch assignment (Batch ID: $actualBatchId)',
+            );
+
+            // Update quantity (subtract)
+            final newQuantity = consumable.currentQuantity - quantity;
+            await consumablesProvider.updateConsumable(consumable.id, {
+              'currentQuantity': newQuantity,
+            });
+          }
+
+          successCount++;
+        } catch (e) {
+          debugPrint('❌ Error processing consumable $consumableId: $e');
+          failCount++;
+        }
+      }
+
+      if (mounted) {
+        // Clear batch only if not called from mixed batch
+        if (!skipClearAndMessage) {
+          scanProvider.clearBatch();
+        }
+
+        // Show success message only if not called from mixed batch
+        if (!skipClearAndMessage) {
+          final actionText = isRestock ? 'restocked' : 'assigned';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                successCount > 0
+                    ? 'Successfully $actionText $successCount consumable(s)${failCount > 0 ? " ($failCount failed)" : ""}'
+                    : 'Failed to ${isRestock ? "restock" : "assign"} consumables',
+              ),
+              backgroundColor: successCount > 0
+                  ? MallonColors.successGreen
+                  : MallonColors.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Batch consumable assignment error: $e');
+      if (mounted && !skipClearAndMessage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: MallonColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted && !skipClearAndMessage) {
+        setState(() => _isProcessing = false);
+      }
+    }
   }
 
   /// Handle batch checkout operation
@@ -594,6 +829,92 @@ class _BatchToolScanWidgetState extends State<BatchToolScanWidget> {
         }
       },
     );
+  }
+
+  /// Handle mixed batch (tools + consumables)
+  Future<void> _handleMixedBatch(Staff? selectedStaff, String action) async {
+    final scanProvider = context.read<ScanProvider>();
+
+    // Generate unique batch ID
+    final batchId = 'BATCH_${DateTime.now().millisecondsSinceEpoch}';
+
+    // Store counts before processing
+    final toolCount = scanProvider.scannedTools.length;
+    final consumableCount = scanProvider.scannedConsumables.length;
+
+    setState(() => _isProcessing = true);
+
+    try {
+      int toolsProcessed = 0;
+
+      // Process tools first
+      if (scanProvider.scannedTools.isNotEmpty) {
+        final transactionHandler = ToolTransactionHandler(
+          context: context,
+          currentStaff: widget.currentStaff,
+        );
+
+        if (action == 'checkout') {
+          await transactionHandler.processBatchCheckout(
+            scanProvider.scannedTools,
+            assignToStaff: selectedStaff,
+            batchId: batchId,
+            () {
+              toolsProcessed = scanProvider.scannedTools.length;
+              debugPrint('✅ $toolsProcessed tools processed in mixed batch');
+            },
+          );
+        } else {
+          await transactionHandler.processBatchCheckin(
+            scanProvider.scannedTools,
+            batchId: batchId,
+            () {
+              toolsProcessed = scanProvider.scannedTools.length;
+              debugPrint('✅ $toolsProcessed tools processed in mixed batch');
+            },
+          );
+        }
+      }
+
+      // Process consumables if staff selected
+      if (scanProvider.scannedConsumables.isNotEmpty && selectedStaff != null) {
+        await _handleBatchConsumableAssignment(
+          selectedStaff,
+          batchId: batchId,
+          skipClearAndMessage: true,
+        );
+      }
+
+      if (mounted) {
+        // Clear batch after processing
+        scanProvider.clearBatch();
+
+        // Show success message with original counts
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Successfully processed: ${toolCount > 0 ? "$toolCount tool(s)" : ""}${toolCount > 0 && consumableCount > 0 ? " and " : ""}${consumableCount > 0 ? "$consumableCount consumable(s)" : ""}',
+            ),
+            backgroundColor: MallonColors.successGreen,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Mixed batch error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error processing mixed batch: $e'),
+            backgroundColor: MallonColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+      }
+    }
   }
 
   @override
@@ -1325,16 +1646,18 @@ class _BatchActionsCard extends StatelessWidget {
               const SizedBox(height: 16),
               Consumer<ScanProvider>(
                 builder: (context, scanProvider, child) {
+                  final hasItems = scanProvider.hasBatchItems;
+
                   return Row(
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: scanProvider.scannedTools.isEmpty
-                              ? null
-                              : () {
+                          onPressed: hasItems
+                              ? () {
                                   scanProvider.clearBatch();
                                   // Clear feedback shown in batch list UI
-                                },
+                                }
+                              : null,
                           icon: const Icon(Icons.clear_all),
                           label: const Text('Clear Batch'),
                         ),
@@ -1342,9 +1665,7 @@ class _BatchActionsCard extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed:
-                              scanProvider.scannedTools.isEmpty ||
-                                  scanProvider.isProcessing
+                          onPressed: !hasItems || scanProvider.isProcessing
                               ? null
                               : onShowBatchSubmitDialog,
                           icon: scanProvider.isProcessing
@@ -1457,6 +1778,8 @@ class _BatchSubmitDialog extends StatefulWidget {
   final List<String> toolIds;
   final Function(Staff?) onCheckOut;
   final VoidCallback onCheckIn;
+  final int consumableCount; // Number of consumables in batch
+  final Function(Staff?, String)? onMixedBatch; // Callback for mixed batches
 
   const _BatchSubmitDialog({
     required this.toolCount,
@@ -1465,6 +1788,8 @@ class _BatchSubmitDialog extends StatefulWidget {
     required this.toolIds,
     required this.onCheckOut,
     required this.onCheckIn,
+    this.consumableCount = 0,
+    this.onMixedBatch,
   });
 
   @override
@@ -1499,8 +1824,43 @@ class _BatchSubmitDialogState extends State<_BatchSubmitDialog> {
     }
   }
 
+  String _getStaffSelectionLabel() {
+    final hasMixedBatch =
+        widget.consumableCount > 0 && widget.onMixedBatch != null;
+
+    if (hasMixedBatch) {
+      if (widget.availableCount > 0) {
+        return 'Assign tools and consumables to:';
+      } else {
+        return 'Who is returning these items?';
+      }
+    } else {
+      return 'Assign tools to:';
+    }
+  }
+
+  String _getStaffSelectionHint() {
+    final hasMixedBatch =
+        widget.consumableCount > 0 && widget.onMixedBatch != null;
+
+    if (hasMixedBatch) {
+      if (widget.availableCount > 0) {
+        return 'Select a staff member to assign all items in this batch';
+      } else {
+        return 'Select the staff member who is returning these items for check-in and restock';
+      }
+    } else if (widget.availableCount > 0) {
+      return 'Select a staff member to assign tools during checkout';
+    } else {
+      return 'These tools will be returned to inventory';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasMixedBatch =
+        widget.consumableCount > 0 && widget.onMixedBatch != null;
+
     return AlertDialog(
       title: const Text('Batch Operation'),
       content: SizedBox(
@@ -1530,58 +1890,89 @@ class _BatchSubmitDialogState extends State<_BatchSubmitDialog> {
                 Text('${widget.checkedOutCount} checked out'),
               ],
             ),
+
+            // Consumables summary (if present)
+            if (widget.consumableCount > 0) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(Icons.inventory_2, color: Colors.blue, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${widget.consumableCount} consumable(s)',
+                    style: TextStyle(color: Colors.blue[700]),
+                  ),
+                ],
+              ),
+            ],
+
             const Divider(height: 24),
 
-            // Staff selection
-            Text(
-              'Assign tools to:',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: 8),
-
-            if (_isLoadingStaff)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            else if (_errorMessage != null)
+            // Staff selection (only shown when needed)
+            if (widget.availableCount > 0 || hasMixedBatch) ...[
               Text(
-                _errorMessage!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              )
-            else
-              DropdownButtonFormField<Staff>(
-                initialValue: _selectedStaff,
-                decoration: const InputDecoration(
-                  labelText: 'Select Staff Member',
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                ),
-                items: _allStaff.map((staff) {
-                  return DropdownMenuItem<Staff>(
-                    value: staff,
-                    child: Text('${staff.fullName} (${staff.jobCode})'),
-                  );
-                }).toList(),
-                onChanged: (Staff? newValue) {
-                  setState(() {
-                    _selectedStaff = newValue;
-                  });
-                },
+                _getStaffSelectionLabel(),
+                style: Theme.of(context).textTheme.titleSmall,
               ),
+              const SizedBox(height: 8),
 
-            const SizedBox(height: 8),
-            Text(
-              'Select a staff member to assign tools during checkout',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-            ),
+              if (_isLoadingStaff)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (_errorMessage != null)
+                Text(
+                  _errorMessage!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                )
+              else
+                DropdownButtonFormField<Staff>(
+                  initialValue: _selectedStaff,
+                  decoration: const InputDecoration(
+                    labelText: 'Select Staff Member',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                  ),
+                  items: _allStaff.map((staff) {
+                    return DropdownMenuItem<Staff>(
+                      value: staff,
+                      child: Text('${staff.fullName} (${staff.jobCode})'),
+                    );
+                  }).toList(),
+                  onChanged: (Staff? newValue) {
+                    setState(() {
+                      _selectedStaff = newValue;
+                    });
+                  },
+                ),
+
+              const SizedBox(height: 8),
+              Text(
+                _getStaffSelectionHint(),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+              ),
+            ] else ...[
+              // Check-in only - no staff selection needed
+              Text(
+                'Ready to check in tools',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'These tools will be returned to available inventory',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+              ),
+            ],
           ],
         ),
       ),
@@ -1590,7 +1981,51 @@ class _BatchSubmitDialogState extends State<_BatchSubmitDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        if (widget.availableCount > 0)
+
+        // Mixed checkout batch button (tools + consumables)
+        if (hasMixedBatch && widget.availableCount > 0)
+          ElevatedButton.icon(
+            onPressed: _selectedStaff == null
+                ? null
+                : () {
+                    Navigator.of(context).pop();
+                    widget.onMixedBatch!(_selectedStaff, 'checkout');
+                  },
+            icon: const Icon(Icons.all_inclusive),
+            label: Text(
+              _selectedStaff == null
+                  ? 'Select Staff'
+                  : 'Process Mixed Checkout',
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purple,
+              foregroundColor: Colors.white,
+            ),
+          ),
+
+        // Mixed check-in batch button (checked-out tools + consumables for restock)
+        if (hasMixedBatch && widget.checkedOutCount > 0)
+          ElevatedButton.icon(
+            onPressed: _selectedStaff == null
+                ? null
+                : () {
+                    Navigator.of(context).pop();
+                    widget.onMixedBatch!(_selectedStaff, 'checkin');
+                  },
+            icon: const Icon(Icons.all_inclusive),
+            label: Text(
+              _selectedStaff == null
+                  ? 'Select Staff'
+                  : 'Process Mixed Check-in',
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+          ),
+
+        // Tool-only checkout
+        if (widget.availableCount > 0 && !hasMixedBatch)
           ElevatedButton.icon(
             onPressed: _selectedStaff == null
                 ? null
@@ -1609,7 +2044,9 @@ class _BatchSubmitDialogState extends State<_BatchSubmitDialog> {
               foregroundColor: Colors.white,
             ),
           ),
-        if (widget.checkedOutCount > 0)
+
+        // Tool-only check in button
+        if (widget.checkedOutCount > 0 && !hasMixedBatch)
           ElevatedButton.icon(
             onPressed: () {
               Navigator.of(context).pop();

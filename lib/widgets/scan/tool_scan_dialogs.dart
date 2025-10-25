@@ -83,8 +83,15 @@ class ToolAlreadyInBatchDialog extends StatelessWidget {
 /// Dialog widget to confirm adding tool to batch
 class AddToBatchConfirmationDialog extends StatelessWidget {
   final Tool tool;
+  final bool isBatchTypeSet;
+  final String? batchTypeLabel; // 'checkout' or 'checkin' or null
 
-  const AddToBatchConfirmationDialog({super.key, required this.tool});
+  const AddToBatchConfirmationDialog({
+    super.key,
+    required this.tool,
+    this.isBatchTypeSet = false,
+    this.batchTypeLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -180,8 +187,10 @@ class AddToBatchConfirmationDialog extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          // Warning if tool is not available
-          if (!tool.isAvailable) ...[
+          // Warning if tool status doesn't match batch type (only if batch already started)
+          if (isBatchTypeSet &&
+              batchTypeLabel == 'checkout' &&
+              !tool.isAvailable) ...[
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -199,7 +208,7 @@ class AddToBatchConfirmationDialog extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'This tool is currently checked out and not available.',
+                      'This tool is checked out and cannot be added to a checkout batch.',
                       style: TextStyle(
                         color: MallonColors.warning,
                         fontSize: 14,
@@ -212,12 +221,66 @@ class AddToBatchConfirmationDialog extends StatelessWidget {
             ),
             const SizedBox(height: 12),
           ],
-          Text(
-            tool.isAvailable
-                ? 'Do you want to add this tool to your batch?'
-                : 'This tool is not available. Do you still want to add it to your batch for check-in?',
-            style: const TextStyle(fontSize: 16),
-          ),
+          // Info message when starting a new batch
+          if (!isBatchTypeSet && !tool.isAvailable) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This will start a check-in batch for returning tools.',
+                      style: TextStyle(
+                        color: Colors.blue[800],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (!isBatchTypeSet && tool.isAvailable) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: MallonColors.primaryGreen.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: MallonColors.primaryGreen),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: MallonColors.primaryGreen,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This will start a checkout batch for assigning tools.',
+                      style: TextStyle(
+                        color: MallonColors.primaryGreen,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Text(_getConfirmationMessage(), style: const TextStyle(fontSize: 16)),
         ],
       ),
       actions: [
@@ -228,15 +291,41 @@ class AddToBatchConfirmationDialog extends StatelessWidget {
         ElevatedButton(
           onPressed: () => Navigator.pop(context, true),
           style: ElevatedButton.styleFrom(
-            backgroundColor: tool.isAvailable
-                ? MallonColors.primaryGreen
-                : MallonColors.warning,
+            backgroundColor: _getButtonColor(),
             foregroundColor: Colors.white,
           ),
-          child: Text(tool.isAvailable ? 'Add to Batch' : 'Add Anyway'),
+          child: Text(_getButtonLabel()),
         ),
       ],
     );
+  }
+
+  String _getConfirmationMessage() {
+    if (!isBatchTypeSet) {
+      // First tool - will determine batch type
+      if (tool.isAvailable) {
+        return 'Add this tool to start a checkout batch?';
+      } else {
+        return 'Add this tool to start a check-in batch?';
+      }
+    } else {
+      // Adding to existing batch
+      return 'Add this tool to your ${batchTypeLabel ?? 'batch'}?';
+    }
+  }
+
+  Color _getButtonColor() {
+    if (!isBatchTypeSet && !tool.isAvailable) {
+      return Colors.orange; // Check-in color
+    }
+    return MallonColors.primaryGreen; // Checkout color or default
+  }
+
+  String _getButtonLabel() {
+    if (!isBatchTypeSet) {
+      return tool.isAvailable ? 'Start Checkout Batch' : 'Start Check-in Batch';
+    }
+    return 'Add to Batch';
   }
 }
 

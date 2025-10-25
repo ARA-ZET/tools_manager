@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../services/tool_history_service.dart';
 
@@ -75,10 +76,30 @@ class TransactionsProvider extends ChangeNotifier {
   }
 
   /// Load current month's transactions (one-time load, not real-time)
+  /// Includes both tool and consumable transactions
   Future<void> _loadCurrentMonthTransactions() async {
     try {
-      final transactions = await _historyService.getCurrentMonthTransactions();
-      _handleTransactionsSnapshot(transactions);
+      // Fetch tool transactions
+      final toolTransactions = await _historyService
+          .getCurrentMonthTransactions();
+
+      // Fetch consumable transactions
+      final consumableTransactions = await _historyService
+          .getCurrentMonthConsumableTransactions();
+
+      // Merge both transaction lists
+      final allTransactions = [...toolTransactions, ...consumableTransactions];
+
+      // Sort by timestamp descending (most recent first)
+      allTransactions.sort((a, b) {
+        final aTime =
+            (a['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
+        final bTime =
+            (b['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
+        return bTime.compareTo(aTime);
+      });
+
+      _handleTransactionsSnapshot(allTransactions);
     } catch (e) {
       _handleError(e);
     }
